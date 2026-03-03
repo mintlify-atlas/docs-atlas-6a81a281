@@ -20,7 +20,7 @@ Index all directories in the watch list. Files are chunked and embedded for sema
 </ParamField>
 
 <ParamField path="--ext" type="list[str]" default="null">
-  File extensions to index. Can be specified multiple times or comma-separated. If not provided, defaults to supported extensions (.py, .md, .txt, .js, .ts, .tsx, .jsx, .json, .yaml, .yml, .toml, .ini, .cfg, .conf, .sh, .bash, .zsh, .fish, .rs, .go, .java, .c, .cpp, .h, .hpp, .cs, .rb, .php, .swift, .kt, .scala, .clj, .ex, .exs, .erl, .hrl, .hs, .lhs, .ml, .mli, .r, .R, .sql, .html, .css, .scss, .sass, .less, .vue, .svelte, .astro, .xml, .csv).
+  File extensions to index. Can be specified multiple times or comma-separated. If not provided, defaults to all supported extensions: `.md`, `.txt`, `.pdf`, `.docx`, `.pptx`, `.html` (documents) and `.py`, `.js`, `.ts`, `.jsx`, `.tsx`, `.go`, `.rs`, `.java`, `.c`, `.cpp`, `.h`, `.hpp`, `.rb`, `.sh`, `.lua`, `.swift` (code).
   
   **Aliases:** `-e`
 </ParamField>
