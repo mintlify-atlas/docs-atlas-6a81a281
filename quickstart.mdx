@@ -1,80 +1,451 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: Quickstart
+description: Get started with know in minutes - add directories, index files, and run your first search
 ---
 
-## Get started in three steps
+## Quick start guide
 
-Get your documentation site running locally and make your first customization.
+This guide will walk you through the basic workflow of using know to search your local files.
 
-### Step 1: Set up your local environment
-
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
+<Steps>
+  <Step title="Add a directory to watch">
+    First, add a directory containing files you want to search:
     
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
+    <CodeGroup>
     
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 2: Deploy your changes
-
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
+    ```bash uv
+    uv run know add ~/Documents/notes
+    ```
     
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
+    ```bash pipx
+    know add ~/Documents/notes
+    ```
+    
+    </CodeGroup>
+    
+    You'll see confirmation:
+    ```
+    Added /Users/yourname/Documents/notes
+    ```
+    
+    <Tip>
+      You can add multiple directories by running the `add` command multiple times. All watched directories are tracked in `~/.know_dirs`.
+    </Tip>
+  </Step>
+  
+  <Step title="Index your files">
+    Index all files in your watched directories:
+    
+    <CodeGroup>
+    
+    ```bash uv
+    uv run know index
+    ```
+    
+    ```bash pipx
+    know index
+    ```
+    
+    </CodeGroup>
+    
+    You'll see a progress bar as know processes your files:
+    ```
+    Indexing 1 directories
+    Indexing ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 100% 12/12 0:00:03 added 342 · skipped 0
+    OK Total: 342 new, 0 unchanged
+    ```
+    
+    <Note>
+      The first indexing run will process all files. Subsequent runs are incremental and only process new or modified files.
+    </Note>
+  </Step>
+  
+  <Step title="Search your files">
+    Now you can search using natural language queries:
+    
+    <CodeGroup>
+    
+    ```bash uv
+    uv run know "retrieval augmented generation"
+    ```
+    
+    ```bash pipx
+    know "retrieval augmented generation"
+    ```
+    
+    </CodeGroup>
+    
+    You'll get ranked results with a detailed preview of the top match:
+    
+    ```
+    ┏━━━┳━━━━━━━━━━┳━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━┓
+    ┃ # ┃ Distance ┃ File         ┃ Path              ┃ Snippet             ┃
+    ┡━━━╇━━━━━━━━━━╇━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━┩
+    │ 1 │   0.3421 │ rag-guide.md │ ~/notes/ai/rag... │ Retrieval Augment...│
+    │ 2 │   0.4102 │ llm-notes.md │ ~/notes/ai/llm... │ Large language mo...│
+    │ 3 │   0.4523 │ vectors.md   │ ~/notes/ai/vec... │ Vector embeddings...│
+    └───┴──────────┴──────────────┴───────────────────┴─────────────────────┘
+    
+    ╭─ Top match: rag-guide.md ─────────────────────────────────────────╮
+    │ ~/notes/ai/rag-guide.md  ·  chunk 0  ·  2048 bytes                │
+    │                                                                    │
+    │ Retrieval Augmented Generation (RAG) combines the power of large  │
+    │ language models with external knowledge retrieval...              │
+    ╰────────────────────────────────────────────────────────────────────╯
+    ```
+  </Step>
+</Steps>
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
+## Basic workflow
 
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
+The know workflow follows a simple pattern:
 
-### Step 3: Go live
+```mermaid
+graph LR
+    A[Add directories] --> B[Index files]
+    B --> C[Search content]
+    C --> D[Update files]
+    D --> B
+```
 
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
+<CardGroup cols={2}>
+  <Card title="Add" icon="folder-plus">
+    Add directories to your watch list with `know add`
+  </Card>
+  <Card title="Index" icon="database">
+    Process and store embeddings with `know index`
+  </Card>
+  <Card title="Search" icon="magnifying-glass">
+    Query your content with natural language
+  </Card>
+  <Card title="Update" icon="arrows-rotate">
+    Re-run `know index` to catch new changes
+  </Card>
+</CardGroup>
+
+## Search examples
+
+know supports multiple search modes and options:
+
+### Default semantic search
+
+Use natural language queries to find semantically similar content:
+
+<CodeGroup>
+
+```bash Semantic query
+know "how to implement authentication"
+```
+
+```bash Technical concepts
+know "database connection pooling"
+```
+
+```bash Code patterns
+know "async error handling patterns"
+```
+
+</CodeGroup>
+
+### BM25 lexical search
+
+Use `--bm25` for keyword-based search when you need exact term matching:
+
+```bash
+know "chromadb persist" --bm25
+```
+
+<Note>
+  BM25 search builds a lightweight index from stored chunks and caches it under `know_index/bm25` for fast subsequent queries.
+</Note>
+
+### Hybrid search
+
+Combine both approaches with `--hybrid` for the best of both worlds:
+
+```bash
+know "vector embeddings" --hybrid
+```
+
+Hybrid mode uses Reciprocal Rank Fusion (RRF) to merge results from both dense vector search and BM25 lexical search:
+
+```python Fusion algorithm (src/retrieval.py:19-32)
+def rrf_fuse(
+    result_lists: Iterable[list[SearchItem]], k: int = 60, limit: int = 5
+) -> list[FusedItem]:
+    scores: dict[str, dict] = {}
+    for items in result_lists:
+        for rank, item in enumerate(items, 1):
+            entry = scores.get(item.key)
+            if entry is None:
+                scores[item.key] = {"item": item, "score": 0.0}
+            scores[item.key]["score"] += 1.0 / (k + rank)
+
+    fused = [FusedItem(v["item"], v["score"]) for v in scores.values()]
+    fused.sort(key=lambda x: x.score, reverse=True)
+    return fused[:limit]
+```
+
+### Limit results
+
+Control the number of results with `--limit`:
+
+```bash
+know "python testing" --limit 10
+```
+
+### Filter by file patterns
+
+Use `--glob` to search only specific file patterns:
+
+```bash
+know "api endpoints" --glob "**/*.py"
+know "documentation" --glob "notes/**" --glob "docs/**/*.md"
+```
+
+### Filter by modification time
+
+Use `--since` to search only recently modified files:
+
+<CodeGroup>
+
+```bash Last 7 days
+know "bug fixes" --since 7d
+```
+
+```bash Last 12 hours
+know "recent changes" --since 12h
+```
+
+```bash Specific date
+know "Q1 planning" --since 2024-01-15
+```
+
+</CodeGroup>
+
+## Managing directories
+
+### View watched directories
+
+See all directories currently being watched:
+
+```bash
+know dirs
+```
+
+Output:
+```
+┏━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ # ┃ Path                               ┃
+┡━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
+│ 1 │ /Users/yourname/Documents/notes    │
+│ 2 │ /Users/yourname/projects/docs      │
+│ 3 │ /Users/yourname/code/repositories  │
+└───┴────────────────────────────────────┘
+```
+
+### Remove a directory
+
+Stop watching a directory:
+
+```bash
+know remove ~/Documents/notes
+```
+
+<Warning>
+  Removing a directory from the watch list doesn't delete its chunks from the index. Use `know prune` to clean up orphaned chunks.
+</Warning>
+
+### Clean up orphaned chunks
+
+Remove chunks from files that have been deleted:
+
+```bash
+know prune
+```
+
+Preview what would be removed with `--dry`:
+
+```bash
+know prune --dry
+```
+
+Output:
+```
+Dry run: Would remove 47 orphaned chunks (from 3 deleted files)
+```
+
+## Advanced indexing options
+
+### Index specific file types
+
+Focus on specific file extensions for faster indexing:
+
+```bash
+know index --ext .md --ext .txt
+```
+
+### Index with glob patterns
+
+Only index files matching specific patterns:
+
+```bash
+know index --glob "**/*.py" --glob "docs/**"
+```
+
+### Index recent files only
+
+Skip older files when indexing:
+
+```bash
+know index --since 7d
+```
+
+### Customize chunking
+
+Adjust chunk size and overlap for your use case:
+
+```bash
+know index --chunk-size 512 --overlap 50
+```
+
+<Note>
+  Default chunk size is 512 tokens with 50 tokens overlap. Larger chunks provide more context but may reduce precision. Smaller chunks improve precision but may lose context.
+</Note>
+
+### Force rebuild
+
+Clear and rebuild the entire index:
+
+```bash
+know index --force
+```
+
+<Warning>
+  `--force` deletes all existing chunks and reindexes everything from scratch. This can take significant time for large document sets.
+</Warning>
+
+### Dry run
+
+Preview what would be indexed without making changes:
+
+```bash
+know index --dry
+```
+
+Output:
+```
+Dry run: Scanning 1 directories
+Dry run: Would index 342 new, 0 unchanged
+```
+
+### Debug indexing
+
+See detailed logs of what's being scanned and chunked:
+
+```bash
+know index --log
+```
+
+## Output formats
+
+### Plain text output
+
+Get simple text output without rich formatting:
+
+```bash
+know "search query" --plain
+```
+
+### JSON output
+
+Get results in JSON format for scripting:
+
+```bash
+know "search query" --json
+```
+
+Save JSON to a file:
+
+```bash
+know "search query" --json-out results.json
+```
+
+## Benchmark mode
+
+Compare dense and BM25 search results side-by-side:
+
+```bash
+know "search query" --benchmark
+```
+
+This displays both result sets so you can evaluate which search mode works better for your query.
+
+## Command shortcuts
+
+know automatically prefixes unrecognized commands with `search`, so these are equivalent:
+
+<CodeGroup>
+
+```bash Explicit
+know search "your query"
+```
+
+```bash Shortcut
+know "your query"
+```
+
+</CodeGroup>
 
 ## Next steps
 
-Now that you have your docs running, explore these key features:
-
 <CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
+  <Card
+    title="Command reference"
+    icon="terminal"
+    href="/commands/search"
+  >
+    Explore all available commands and options
+  </Card>
+  <Card
+    title="Search modes"
+    icon="gear"
+    href="/concepts/search-modes"
+  >
+    Learn about advanced search configuration
+  </Card>
 </CardGroup>
 
-<Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
-</Note>
+## Tips and best practices
+
+<AccordionGroup>
+  <Accordion title="When to use each search mode" icon="compass">
+    - **Dense (default)**: Best for semantic queries and conceptual search
+    - **BM25**: Best for exact keyword matching and technical terms
+    - **Hybrid**: Best when you want both semantic understanding and keyword precision
+  </Accordion>
+  
+  <Accordion title="Optimizing index performance" icon="gauge-high">
+    - Use `--ext` to limit file types and speed up indexing
+    - Use `--glob` to focus on specific directories
+    - Use `--since` to skip unchanged files
+    - Run `know prune` periodically to remove orphaned chunks
+    - Index incrementally by running `know index` regularly
+  </Accordion>
+  
+  <Accordion title="Managing large document sets" icon="database">
+    - Start with smaller directories to test
+    - Use `--dry` to preview indexing before committing
+    - Monitor chunk counts with `know dirs`
+    - Adjust `--chunk-size` based on your document types
+    - Use `--force` sparingly as it rebuilds everything
+  </Accordion>
+  
+  <Accordion title="Debugging search results" icon="bug">
+    - Use `--benchmark` to compare search modes
+    - Try different chunk sizes if results are poor
+    - Use `--log` when indexing to see what's being processed
+    - Check file modification times with `--since` filters
+    - Verify glob patterns match expected files
+  </Accordion>
+</AccordionGroup>

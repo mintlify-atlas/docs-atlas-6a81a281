@@ -1,0 +1,75 @@
+---
+title: know add
+description: Add a directory to the watch list for indexing
+---
+
+## Usage
+
+```bash
+know add <directory>
+```
+
+Add a directory to the watch list. Directories added with this command will be indexed when you run `know index`.
+
+## Parameters
+
+<ParamField path="directory" type="Path" required>
+  Path to the directory to add to the watch list. The path will be resolved to an absolute path.
+</ParamField>
+
+## Behavior
+
+- The directory path is resolved to an absolute path before being added
+- If the path is not a valid directory, an error is shown
+- If the directory is already in the watch list, a warning is displayed but no duplicate is added
+- The watch list is stored in `~/.know_dirs`
+
+## Examples
+
+### Add a directory
+
+```bash
+know add ~/Documents/notes
+```
+
+```
+Added /home/user/Documents/notes
+```
+
+### Add current directory
+
+```bash
+know add .
+```
+
+```
+Added /home/user/current/path
+```
+
+### Attempting to add an existing directory
+
+```bash
+know add ~/Documents/notes
+```
+
+```
+Already added: /home/user/Documents/notes
+```
+
+### Attempting to add an invalid path
+
+```bash
+know add /nonexistent/path
+```
+
+```
+Error: '/nonexistent/path' is not a valid directory
+```
+
+## Next steps
+
+After adding directories, run `know index` to index their contents:
+
+```bash
+know index
+```

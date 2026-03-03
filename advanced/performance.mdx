@@ -1,0 +1,608 @@
+---
+title: Performance
+description: Optimize indexing and search speed with BM25 caching, file cache, batch processing, and incremental indexing
+---
+
+Know employs several performance optimization strategies to handle large codebases efficiently, including intelligent caching, batch processing, and incremental updates.
+
+## File cache
+
+The file cache tracks indexed files to skip unchanged content during re-indexing.
+
+### Cache location
+
+The cache is stored at `./know_index/file_cache.json` (src/cache.py:4):
+
+```python
+CACHE_PATH = Path("./know_index/file_cache.json")
+```
+
+### Cache structure
+
+```json
+{
+  "config": {
+    "chunk_size": 512,
+    "chunk_overlap": 50
+  },
+  "files": {
+    "/absolute/path/to/file.py": {
+      "mtime": 1709234567.123,
+      "size": 4892,
+      "indexed": true
+    }
+  }
+}
+```
+
+### Cache validation
+
+The cache is invalidated if chunk settings change (src/cache.py:7-20):
+
+```python
+def load_file_cache(chunk_size: int, chunk_overlap: int) -> dict[str, dict]:
+    if not CACHE_PATH.exists():
+        return {}
+    data = json.loads(CACHE_PATH.read_text())
+    config = data.get("config", {})
+    if (
+        config.get("chunk_size") != chunk_size
+        or config.get("chunk_overlap") != chunk_overlap
+    ):
+        return {}
+    files = data.get("files", {})
+    if not isinstance(files, dict):
+        return {}
+    return files
+```
+
+<Warning>
+Changing `--chunk-size` or `--overlap` parameters invalidates the entire file cache. Use consistent chunking settings to maximize cache benefits.
+</Warning>
+
+### How files are skipped
+
+During indexing, files are checked against the cache (src/db.py:142-173):
+
+```python
+cache = load_file_cache(chunk_size, chunk_overlap)
+cache_updates: dict[str, dict] = dict(cache)
+filtered: list = []
+skipped_cache = 0
+skip_entries: list[SkipEntry] = []
+for doc in documents:
+    source_path = doc.metadata["file_path"]
+    stat = Path(source_path).stat()
+    cache_entry = cache.get(source_path)
+    if (
+        cache_entry
+        and cache_entry.get("indexed")
+        and cache_entry.get("mtime") == stat.st_mtime
+        and cache_entry.get("size") == stat.st_size
+    ):
+        skipped_cache += 1
+        if report:
+            skip_entries.append(
+                SkipEntry(
+                    path=source_path,
+                    chunk_index=0,
+                    reason="unchanged_file",
+                    collides_with=None,
+                )
+            )
+        continue
+    cache_updates[source_path] = {
+        "mtime": stat.st_mtime,
+        "size": stat.st_size,
+        "indexed": False,
+    }
+    filtered.append(doc)
+```
+
+A file is skipped if:
+1. It exists in the cache
+2. The `indexed` flag is `true`
+3. Modification time (`mtime`) matches
+4. File size matches
+
+### Cache updates
+
+After successful indexing, the cache is updated (src/db.py:303-307):
+
+```python
+for doc in filtered:
+    source_path = doc.metadata["file_path"]
+    if source_path in cache_updates:
+        cache_updates[source_path]["indexed"] = True
+save_file_cache(cache_updates, chunk_size, chunk_overlap)
+```
+
+The save function (src/cache.py:23-31):
+
+```python
+def save_file_cache(
+    files: dict[str, dict], chunk_size: int, chunk_overlap: int
+) -> None:
+    CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "config": {"chunk_size": chunk_size, "chunk_overlap": chunk_overlap},
+        "files": files,
+    }
+    CACHE_PATH.write_text(json.dumps(payload, indent=2))
+```
+
+## BM25 cache
+
+The BM25 index is cached to avoid rebuilding on every search.
+
+### Cache directory structure
+
+```
+know_index/bm25/
+├── meta.json          # Index metadata
+├── ids.json           # Document ID mapping
+├── vocab.pkl          # BM25 vocabulary
+└── *.npz              # BM25 index matrices
+```
+
+Defined in src/bm25.py:9-11:
+
+```python
+BM25_CACHE_DIR = Path("./know_index/bm25")
+BM25_META_PATH = BM25_CACHE_DIR / "meta.json"
+BM25_IDS_PATH = BM25_CACHE_DIR / "ids.json"
+```
+
+### Cache loading
+
+The cache is validated against the document count (src/bm25.py:64-78):
+
+```python
+def load_cached_index(expected_count: int) -> tuple[bm25s.BM25, list[str]] | None:
+    if (
+        not BM25_CACHE_DIR.exists()
+        or not BM25_META_PATH.exists()
+        or not BM25_IDS_PATH.exists()
+    ):
+        return None
+    meta = json.loads(BM25_META_PATH.read_text())
+    if meta.get("count") != expected_count:
+        return None
+    retriever = bm25s.BM25.load(str(BM25_CACHE_DIR), load_corpus=False)
+    ids = json.loads(BM25_IDS_PATH.read_text())
+    if not isinstance(ids, list) or len(ids) != expected_count:
+        return None
+    return retriever, ids
+```
+
+The cache is invalidated if the document count changes, ensuring the index stays synchronized with the vector database.
+
+### Cache creation
+
+When no valid cache exists, the index is built and saved (src/db.py:385-398):
+
+```python
+cache = load_cached_index(doc_count)
+ids: list[str]
+if cache is None:
+    docs = dense_collection.get(include=["documents"])
+    if not docs["documents"]:
+        return []
+    index = BM25Index.from_documents(
+        ids=docs["ids"],
+        documents=docs["documents"],
+        metadatas=[],
+    )
+    retriever = index.bm25
+    ids = docs["ids"]
+    save_cached_index(retriever, ids)
+else:
+    retriever, ids = cache
+```
+
+The save function (src/bm25.py:81-85):
+
+```python
+def save_cached_index(retriever: bm25s.BM25, ids: list[str]) -> None:
+    BM25_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    retriever.save(str(BM25_CACHE_DIR))
+    BM25_IDS_PATH.write_text(json.dumps(ids))
+    BM25_META_PATH.write_text(json.dumps({"count": len(ids)}))
+```
+
+### BM25 index building
+
+The index uses stemming and stopword removal (src/bm25.py:26-42):
+
+```python
+@classmethod
+def from_documents(
+    cls, ids: list[str], documents: list[str], metadatas: list[dict]
+) -> "BM25Index":
+    corpus_tokens = bm25s.tokenize(
+        documents,
+        stopwords="en",
+        stemmer=_STEMMER,
+        show_progress=False,
+    )
+    retriever = bm25s.BM25()
+    retriever.index(corpus_tokens, show_progress=False)
+    return cls(
+        ids=ids,
+        documents=documents,
+        metadatas=metadatas,
+        bm25=retriever,
+    )
+```
+
+<Note>
+The BM25 cache is automatically rebuilt when documents are added or removed. The first search after indexing new content will be slower as it rebuilds the BM25 index.
+</Note>
+
+## Batch processing
+
+Both indexing and pruning use batching to reduce database round-trips.
+
+### Batch size configuration
+
+The batch size is hardcoded to 100 (src/db.py:190):
+
+```python
+batch_size = 100
+```
+
+### Existence checking
+
+Before indexing, chunks are checked in batches to find existing IDs (src/db.py:217-223):
+
+```python
+all_ids = [nd[0] for nd in node_data]
+existing_ids: set[str] = set()
+for i in range(0, len(all_ids), batch_size):
+    batch_ids = list(set(all_ids[i : i + batch_size]))  # dedupe within batch
+    result = dense_collection.get(ids=batch_ids)
+    existing_ids.update(result["ids"])
+```
+
+This deduplicates IDs within each batch to avoid ChromaDB errors.
+
+### Batch upserting
+
+New chunks are written in batches with progress tracking (src/db.py:286-301):
+
+```python
+with Progress(
+    TextColumn("[bold cyan]Indexing[/]"),
+    BarColumn(
+        bar_width=32,
+        complete_style="green",
+        finished_style="green",
+    ),
+    TaskProgressColumn(),
+    TextColumn("{task.completed}/{task.total}"),
+    TimeRemainingColumn(),
+    TextColumn(
+        "[dim]added {task.fields[added]} · skipped {task.fields[skipped]}[/]"
+    ),
+    console=console,
+    transient=False,
+) as progress:
+    total_batches = (len(pending_ids) + batch_size - 1) // batch_size
+    task = progress.add_task("", total=total_batches, added=0, skipped=skipped)
+
+    for i in range(0, len(pending_ids), batch_size):
+        batch_ids = pending_ids[i : i + batch_size]
+        batch_docs = pending_docs[i : i + batch_size]
+        batch_metas = pending_metas[i : i + batch_size]
+
+        dense_collection.upsert(
+            ids=batch_ids,
+            documents=batch_docs,
+            metadatas=batch_metas,
+        )
+        added += len(batch_ids)
+        progress.update(task, advance=1, added=added, skipped=skipped)
+```
+
+### Batch deletion during pruning
+
+Orphaned chunks are deleted in batches (src/db.py:566-569):
+
+```python
+batch_size = 100
+for i in range(0, len(orphan_ids), batch_size):
+    batch = orphan_ids[i : i + batch_size]
+    dense_collection.delete(ids=batch)
+```
+
+## Incremental indexing
+
+Know supports incremental updates through multiple mechanisms.
+
+### Skip mechanisms
+
+Chunks can be skipped for three reasons (src/db.py:57-62):
+
+```python
+@dataclass
+class SkipEntry:
+    path: str
+    chunk_index: int
+    reason: str
+    collides_with: str | None = None  # path of the file this collides with
+```
+
+Reasons:
+1. **`unchanged_file`** - File matches cache (mtime + size)
+2. **`already_indexed`** - Chunk ID exists in database
+3. **`duplicate_content`** - Chunk hash matches another chunk in same batch
+
+### IndexReport structure
+
+Detailed skip information is available via `--report` (src/db.py:65-72):
+
+```python
+@dataclass
+class IndexReport:
+    added: int
+    skipped: int
+    skip_entries: list[SkipEntry]
+
+    def to_json(self) -> str:
+        return json.dumps(asdict(self), indent=2)
+```
+
+Example report:
+
+```json
+{
+  "added": 42,
+  "skipped": 158,
+  "skip_entries": [
+    {
+      "path": "/home/user/project/README.md",
+      "chunk_index": 0,
+      "reason": "unchanged_file",
+      "collides_with": null
+    },
+    {
+      "path": "/home/user/project/src/utils.py",
+      "chunk_index": 2,
+      "reason": "duplicate_content",
+      "collides_with": "/home/user/project/src/helpers.py"
+    }
+  ]
+}
+```
+
+### Deduplication logic
+
+Chunks are deduplicated using MD5 hashes (src/db.py:201-203):
+
+```python
+chunk_id = hashlib.md5(
+    f"{source_path}:{chunk_index}:{node.text}".encode()
+).hexdigest()
+```
+
+The deduplication check (src/db.py:226-254):
+
+```python
+seen_ids: dict[str, str] = {}  # chunk_id -> path of first occurrence
+for chunk_id, doc_text, meta in node_data:
+    if chunk_id in existing_ids:
+        skipped += 1
+        if report:
+            skip_entries.append(
+                SkipEntry(
+                    path=meta["path"],
+                    chunk_index=meta["chunk_index"],
+                    reason="already_indexed",
+                    collides_with=None,
+                )
+            )
+    elif chunk_id in seen_ids:
+        skipped += 1
+        if report:
+            skip_entries.append(
+                SkipEntry(
+                    path=meta["path"],
+                    chunk_index=meta["chunk_index"],
+                    reason="duplicate_content",
+                    collides_with=seen_ids[chunk_id],
+                )
+            )
+    else:
+        seen_ids[chunk_id] = meta["path"]
+        pending_ids.append(chunk_id)
+        pending_docs.append(doc_text)
+        pending_metas.append(meta)
+```
+
+### Usage example
+
+```bash
+# Generate detailed skip report
+know index --report skip_report.json
+
+# Re-index only modified files
+know index --since 1d
+
+# Dry run to preview changes
+know index --dry
+```
+
+## Dry run mode
+
+Test indexing operations without writing to the database.
+
+```bash
+know index --dry
+```
+
+Output:
+
+```
+[yellow]Dry run:[/] Would index [bold]42[/] new, [dim]158 unchanged[/]
+```
+
+Implementation (src/db.py:261-268):
+
+```python
+if dry_run:
+    added = len(pending_ids)
+    console.print(
+        f"[yellow]Dry run:[/] Would index [bold]{added}[/] new, [dim]{skipped} unchanged[/]"
+    )
+    if report:
+        return IndexReport(added=added, skipped=skipped, skip_entries=skip_entries)
+    return added, skipped
+```
+
+<Note>
+Dry run mode calculates all skip logic and generates accurate reports without modifying the database or cache files.
+</Note>
+
+## Cache invalidation
+
+All caches are cleared with `know reset`:
+
+```bash
+know reset
+```
+
+Implementation (src/db.py:519-525):
+
+```python
+def clear():
+    global dense_collection
+    client.delete_collection(name="documents")
+    dense_collection = client.get_or_create_collection(name="documents")
+    shutil.rmtree("./know_index/bm25", ignore_errors=True)
+    CACHE_PATH.unlink(missing_ok=True)
+    console.print("[green]Collection cleared")
+```
+
+This removes:
+- Vector database collection
+- BM25 cache directory
+- File cache JSON
+
+## Pruning orphaned chunks
+
+Remove chunks from deleted files to keep the index clean.
+
+```bash
+# Preview what would be removed
+know prune --dry
+
+# Remove orphaned chunks
+know prune
+```
+
+The prune operation (src/db.py:528-582):
+
+1. Fetches all chunk metadata
+2. Caches file existence checks to avoid redundant `stat()` calls
+3. Batches deletions for efficiency
+4. Updates the file cache to remove deleted files
+
+Key optimization (src/db.py:536-550):
+
+```python
+orphan_ids: list[str] = []
+checked_paths: dict[str, bool] = {}  # cache path existence checks
+
+for chunk_id, meta in zip(all_data["ids"], all_data["metadatas"]):
+    path = meta.get("path", "")
+    if not path:
+        orphan_ids.append(chunk_id)
+        continue
+
+    if path not in checked_paths:
+        checked_paths[path] = Path(path).exists()
+
+    if not checked_paths[path]:
+        orphan_ids.append(chunk_id)
+        if log:
+            console.log(f"Orphaned: {path}")
+```
+
+This reduces filesystem calls from O(chunks) to O(files).
+
+## Performance tips
+
+### Optimize chunk settings
+
+```bash
+# Larger chunks = fewer database entries = faster indexing
+know index --chunk-size 1024 --overlap 100
+
+# Smaller chunks = more granular search results
+know index --chunk-size 256 --overlap 25
+```
+
+### Use incremental indexing
+
+```bash
+# Only index recent changes
+know index --since 1d
+
+# Filter to specific directories
+know index --glob "src/**"
+```
+
+### Monitor with reports
+
+```bash
+# See what's being skipped
+know index --report skip_report.json --log
+
+# Check cache effectiveness
+cat skip_report.json | jq '.skip_entries | group_by(.reason) | map({reason: .[0].reason, count: length})'
+```
+
+### Regular pruning
+
+```bash
+# Remove orphaned chunks after deleting files
+know prune
+
+# Preview before pruning
+know prune --dry --log
+```
+
+## Benchmark comparison
+
+Compare dense and BM25 performance:
+
+```bash
+know search "algorithm" --benchmark
+```
+
+This runs both search modes and displays results side-by-side, useful for:
+- Evaluating which mode works better for your queries
+- Understanding score distributions
+- Debugging relevance issues
+
+## Performance characteristics
+
+| Operation | Complexity | Notes |
+|-----------|-----------|-------|
+| Index with cache | O(new files) | Skips unchanged files |
+| Index without cache | O(all files) | Processes everything |
+| Dense search | O(log n) | Approximate nearest neighbor |
+| BM25 search (cached) | O(query terms) | Very fast lexical search |
+| BM25 search (uncached) | O(documents) | Rebuilds index first |
+| Prune | O(unique files) | Cached path checks |
+
+## Storage overhead
+
+- **File cache**: ~100 bytes per indexed file
+- **BM25 cache**: ~1-5 MB for 10k documents (depends on vocabulary size)
+- **Vector database**: ~2-4 KB per chunk (384-dim embeddings + metadata)
+
+For a typical 1,000 file codebase:
+- File cache: ~100 KB
+- BM25 cache: ~2 MB
+- Vector DB: ~500 MB (assuming 5 chunks/file average)

@@ -1,0 +1,212 @@
+---
+title: know index
+description: Index all watched directories for semantic search
+---
+
+## Usage
+
+```bash
+know index [OPTIONS]
+```
+
+Index all directories in the watch list. Files are chunked and embedded for semantic search. Only modified files are re-indexed by default.
+
+## Options
+
+<ParamField path="--log" type="boolean" default="false">
+  Show detailed logs during indexing.
+  
+  **Aliases:** `-l`
+</ParamField>
+
+<ParamField path="--ext" type="list[str]" default="null">
+  File extensions to index. Can be specified multiple times or comma-separated. If not provided, defaults to supported extensions (.py, .md, .txt, .js, .ts, .tsx, .jsx, .json, .yaml, .yml, .toml, .ini, .cfg, .conf, .sh, .bash, .zsh, .fish, .rs, .go, .java, .c, .cpp, .h, .hpp, .cs, .rb, .php, .swift, .kt, .scala, .clj, .ex, .exs, .erl, .hrl, .hs, .lhs, .ml, .mli, .r, .R, .sql, .html, .css, .scss, .sass, .less, .vue, .svelte, .astro, .xml, .csv).
+  
+  **Aliases:** `-e`
+</ParamField>
+
+<ParamField path="--glob" type="list[str]" default="null">
+  Include only files matching glob patterns. Can be specified multiple times or comma-separated. Examples: `**/*.md`, `notes/**`.
+  
+  **Aliases:** `-g`
+</ParamField>
+
+<ParamField path="--since" type="str" default="null">
+  Only index files modified since the specified time. Accepts relative time (e.g., `7d`, `12h`, `30m`) or absolute dates (e.g., `2024-01-15`, `2024-01-15T10:30:00`).
+</ParamField>
+
+<ParamField path="--recursive" type="boolean" default="true">
+  Scan subdirectories. Use `--no-recursive` to disable.
+  
+  **Aliases:** `-r` (enable), `-R` (disable)
+</ParamField>
+
+<ParamField path="--chunk-size" type="int" default="512">
+  Chunk size in tokens. Larger chunks provide more context but may be less precise.
+  
+  **Aliases:** `-c`
+</ParamField>
+
+<ParamField path="--overlap" type="int" default="50">
+  Chunk overlap in tokens. Overlap ensures context continuity across chunk boundaries.
+  
+  **Aliases:** `-o`
+</ParamField>
+
+<ParamField path="--force" type="boolean" default="false">
+  Clear and re-index everything. This removes all existing chunks and rebuilds the entire index.
+  
+  **Aliases:** `-f`
+</ParamField>
+
+<ParamField path="--dry" type="boolean" default="false">
+  Show what would be indexed without writing to the database. Useful for testing filters and patterns.
+</ParamField>
+
+<ParamField path="--report" type="Path" default="null">
+  Write skip report JSON to file. The report contains details about which files were skipped and why.
+</ParamField>
+
+## Behavior
+
+- Only files that have been modified since last indexing are re-indexed (unless `--force` is used)
+- Files are chunked based on `--chunk-size` and `--overlap` settings
+- The index is stored in a local database
+- If no directories are added, a warning is shown
+- When `--dry` is used with `--force`, the `--force` flag is ignored
+
+## Examples
+
+### Basic indexing
+
+```bash
+know index
+```
+
+```
+Indexing 2 directories
+OK Total: 127 new, 0 unchanged
+```
+
+### Index with detailed logs
+
+```bash
+know index --log
+```
+
+```
+Indexing 2 directories
+Extensions: ['.py', '.md', '.txt', ...]
+Chunk size: 512, overlap: 50
+───────────────────────────────── /home/user/Documents/notes ─────────────────────────────────
+✓ notes.md (5 chunks)
+✓ journal.md (3 chunks)
+───────────────────────────────── /home/user/projects/code ─────────────────────────────────
+✓ main.py (12 chunks)
+✓ utils.py (8 chunks)
+OK Total: 28 new, 0 unchanged
+```
+
+### Index only markdown files
+
+```bash
+know index --ext .md
+```
+
+```
+Indexing 2 directories
+OK Total: 45 new, 0 unchanged
+```
+
+### Index multiple extensions
+
+```bash
+know index --ext .md --ext .txt
+# or
+know index --ext .md,.txt
+```
+
+### Index only files in a specific subdirectory
+
+```bash
+know index --glob "notes/**"
+```
+
+### Index files modified in the last 7 days
+
+```bash
+know index --since 7d
+```
+
+### Index files modified since a specific date
+
+```bash
+know index --since 2024-01-15
+```
+
+### Force re-index everything
+
+```bash
+know index --force
+```
+
+```
+Indexing 2 directories
+OK Total: 127 new, 0 unchanged
+```
+
+### Dry run to preview what would be indexed
+
+```bash
+know index --dry --log
+```
+
+```
+Dry run: Scanning 2 directories
+Extensions: ['.py', '.md', '.txt', ...]
+Chunk size: 512, overlap: 50
+───────────────────────────────── /home/user/Documents/notes ─────────────────────────────────
+✓ notes.md (5 chunks)
+✓ journal.md (3 chunks)
+Dry run: Would index 28 new, 0 unchanged
+```
+
+### Custom chunk settings for larger context
+
+```bash
+know index --chunk-size 1024 --overlap 100
+```
+
+### Generate a skip report
+
+```bash
+know index --report skip-report.json
+```
+
+```
+Indexing 2 directories
+OK Total: 127 new, 15 unchanged
+Report written to skip-report.json
+```
+
+### Index only markdown files modified in the last day
+
+```bash
+know index --ext .md --since 1d --log
+```
+
+## Getting started
+
+Before running `know index`, make sure you've added directories:
+
+```bash
+know add ~/Documents/notes
+know add ~/projects/code
+know index
+```
+
+If you run `know index` without any watched directories:
+
+```
+No directories added. Use 'know add <dir>' first.
+```

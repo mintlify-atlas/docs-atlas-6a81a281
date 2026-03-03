@@ -1,0 +1,159 @@
+---
+title: Introduction
+description: Semantic search CLI for local files with vector and lexical search capabilities
+---
+
+<img
+  className="block dark:hidden"
+  src="/images/hero-light.svg"
+  alt="Hero Light"
+/>
+<img
+  className="hidden dark:block"
+  src="/images/hero-dark.svg"
+  alt="Hero Dark"
+/>
+
+## What is know?
+
+know is a powerful semantic search CLI that helps you search through your local files using advanced retrieval techniques. It watches directories, chunks documents, and stores embeddings in a local ChromaDB index so you can query your notes, docs, or code quickly from the terminal.
+
+<CardGroup cols={2}>
+  <Card
+    title="Installation"
+    icon="download"
+    href="/installation"
+  >
+    Get started with uv or pipx in minutes
+  </Card>
+  <Card
+    title="Quickstart"
+    icon="rocket"
+    href="/quickstart"
+  >
+    Learn how to index and search your files
+  </Card>
+  <Card
+    title="Commands"
+    icon="terminal"
+    href="/commands/search"
+  >
+    Explore all available CLI commands
+  </Card>
+  <Card
+    title="Search modes"
+    icon="gear"
+    href="/concepts/search-modes"
+  >
+    Configure search and indexing behavior
+  </Card>
+</CardGroup>
+
+## Key features
+
+<AccordionGroup>
+  <Accordion title="Semantic vector search with ChromaDB" icon="brain">
+    know uses ChromaDB to store document embeddings, enabling semantic search that understands meaning beyond keyword matching. The dense retrieval system finds relevant content even when exact terms don't match.
+  </Accordion>
+  
+  <Accordion title="BM25 lexical search with caching" icon="magnifying-glass">
+    Built-in BM25 lexical search provides fast keyword-based retrieval with intelligent caching. The BM25 index is stored under `know_index/bm25` and reused across searches for optimal performance.
+  </Accordion>
+  
+  <Accordion title="Hybrid search combining both approaches" icon="shuffle">
+    Combine the best of both worlds with hybrid search mode that fuses dense vector search and BM25 lexical search using Reciprocal Rank Fusion (RRF) for superior accuracy.
+  </Accordion>
+  
+  <Accordion title="Directory watching and incremental indexing" icon="folder-tree">
+    Add directories to a watch list and know tracks them in `~/.know_dirs`. Incremental indexing with file modification time tracking ensures only changed files are reprocessed.
+  </Accordion>
+  
+  <Accordion title="Support for 20+ file types" icon="file-code">
+    Index documents (`.md`, `.txt`, `.pdf`, `.docx`, `.pptx`, `.html`) and code files (`.py`, `.js`, `.ts`, `.jsx`, `.tsx`, `.go`, `.rs`, `.java`, `.c`, `.cpp`, `.h`, `.hpp`, `.rb`, `.sh`, `.lua`, `.swift`).
+  </Accordion>
+</AccordionGroup>
+
+## How it works
+
+know uses a simple but powerful architecture:
+
+<Steps>
+  <Step title="Load documents">
+    know reads files using `llama-index` SimpleDirectoryReader, supporting 20+ file types including documents and code.
+  </Step>
+  
+  <Step title="Chunk with sentence splitter">
+    Documents are split into semantic chunks using llama-index's SentenceSplitter with configurable chunk size (default 512 tokens) and overlap (default 50 tokens).
+  </Step>
+  
+  <Step title="Store embeddings">
+    Chunks are embedded and stored in a local ChromaDB collection under `./know_index` with metadata including file path, name, extension, size, and chunk index.
+  </Step>
+  
+  <Step title="Search with multiple modes">
+    Query using dense vector search (default), BM25 lexical search, or hybrid mode that fuses both approaches with RRF.
+  </Step>
+</Steps>
+
+<Note>
+  Directories are tracked in `~/.know_dirs` and BM25 search builds a cached index under `./know_index/bm25` for fast subsequent queries.
+</Note>
+
+## Supported file types
+
+know supports a wide range of file extensions out of the box:
+
+<CodeGroup>
+
+```python Documents
+[
+    ".md",
+    ".txt",
+    ".pdf",
+    ".docx",
+    ".pptx",
+    ".html",
+]
+```
+
+```python Code
+[
+    ".py",
+    ".js",
+    ".ts",
+    ".jsx",
+    ".tsx",
+    ".go",
+    ".rs",
+    ".java",
+    ".c",
+    ".cpp",
+    ".h",
+    ".hpp",
+    ".rb",
+    ".sh",
+    ".lua",
+    ".swift",
+]
+```
+
+</CodeGroup>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card
+    title="Install know"
+    icon="download"
+    href="/installation"
+  >
+    Set up know with uv or pipx
+  </Card>
+  <Card
+    title="Start searching"
+    icon="rocket"
+    href="/quickstart"
+  >
+    Index your first directory and run a search
+  </Card>
+</CardGroup>

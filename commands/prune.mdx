@@ -1,0 +1,94 @@
+---
+title: know prune
+description: Remove orphaned chunks from deleted files
+---
+
+## Usage
+
+```bash
+know prune [OPTIONS]
+```
+
+Remove orphaned chunks from the index. Orphaned chunks are chunks that belong to files that have been deleted or moved from watched directories.
+
+## Options
+
+<ParamField path="--dry" type="boolean" default="false">
+  Show what would be pruned without deleting. Useful for previewing which chunks will be removed.
+</ParamField>
+
+<ParamField path="--log" type="boolean" default="false">
+  Show detailed output during pruning.
+  
+  **Aliases:** `-l`
+</ParamField>
+
+## Behavior
+
+- Scans the index for chunks whose source files no longer exist
+- Removes orphaned chunks from the database
+- Does not affect chunks from existing files
+- When `--dry` is used, no changes are made to the database
+
+## Examples
+
+### Prune orphaned chunks
+
+```bash
+know prune
+```
+
+```
+Removed 45 orphaned chunks
+```
+
+### Preview what would be pruned
+
+```bash
+know prune --dry
+```
+
+```
+Would remove 45 orphaned chunks
+```
+
+### Prune with detailed output
+
+```bash
+know prune --log
+```
+
+```
+Scanning for orphaned chunks...
+✗ /home/user/Documents/notes/old-notes.md (12 chunks)
+✗ /home/user/projects/deleted-file.py (8 chunks)
+✗ /home/user/work/archived.md (25 chunks)
+Removed 45 orphaned chunks
+```
+
+### Dry run with detailed output
+
+```bash
+know prune --dry --log
+```
+
+```
+Scanning for orphaned chunks...
+✗ /home/user/Documents/notes/old-notes.md (12 chunks)
+✗ /home/user/projects/deleted-file.py (8 chunks)
+✗ /home/user/work/archived.md (25 chunks)
+Would remove 45 orphaned chunks
+```
+
+## When to use prune
+
+- After deleting or moving files from watched directories
+- After removing directories from the watch list with `know remove`
+- When you want to free up space in the index database
+- To clean up the index after reorganizing your files
+
+## Related commands
+
+- `know reset` - Clear the entire index (more aggressive than prune)
+- `know index` - Re-index directories to update the index
+- `know remove <directory>` - Remove a directory from the watch list

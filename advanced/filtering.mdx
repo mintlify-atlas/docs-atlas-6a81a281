@@ -1,0 +1,284 @@
+---
+title: Filtering
+description: Filter indexed files and search results using glob patterns, file extensions, and timestamp conditions
+---
+
+The know CLI provides powerful filtering capabilities to narrow down which files are indexed and searched. You can combine multiple filters to precisely target the content you need.
+
+## Glob pattern filtering
+
+Use glob patterns to include only specific files during indexing or search operations.
+
+### Basic usage
+
+```bash
+# Index only markdown files in a notes directory
+know index --glob "notes/**/*.md"
+
+# Search only within Python files
+know search "error handling" --glob "**/*.py"
+
+# Multiple patterns (comma-separated)
+know index --glob "src/**/*.ts,docs/**/*.md"
+
+# Multiple --glob flags
+know search "API" --glob "**/*.py" --glob "**/*.js"
+```
+
+### How glob matching works
+
+The glob filter is implemented in `_parse_globs()` (src/know.py:56-65) which processes patterns and splits comma-separated values:
+
+```python
+def _parse_globs(globs: Optional[list[str]]) -> list[str]:
+    processed: list[str] = []
+    if not globs:
+        return processed
+    for pattern in globs:
+        for g in pattern.split(","):
+            g = g.strip()
+            if g:
+                processed.append(g)
+    return processed
+```
+
+During indexing, the filter checks both the relative path and the absolute path against each pattern using `fnmatch` (src/db.py:106-122):
+
+```python
+if include_globs:
+    filtered: list = []
+    base_resolved = base_dir.resolve()
+    for doc in documents:
+        source_path = doc.metadata["file_path"]
+        source_resolved = Path(source_path).resolve()
+        if source_resolved.is_relative_to(base_resolved):
+            rel_str = source_resolved.relative_to(base_resolved).as_posix()
+        else:
+            rel_str = source_resolved.name
+        if any(
+            fnmatch.fnmatch(rel_str, pattern) for pattern in include_globs
+        ) or any(
+            fnmatch.fnmatch(source_path, pattern) for pattern in include_globs
+        ):
+            filtered.append(doc)
+    documents = filtered
+```
+
+### Common glob patterns
+
+| Pattern | Matches |
+|---------|----------|
+| `**/*.md` | All markdown files in any directory |
+| `src/**/*.py` | Python files under src/ and subdirectories |
+| `*.txt` | Text files in the root directory only |
+| `docs/**/api-*.md` | API documentation with specific naming |
+| `**/.{js,ts}` | JavaScript and TypeScript files everywhere |
+
+<Note>
+Glob patterns are checked against both the relative path (from the indexed directory) and the filename. This allows patterns like `*.md` to match any markdown file regardless of its directory depth.
+</Note>
+
+## Extension filtering
+
+Limit indexing to specific file types using the `--ext` flag.
+
+### Supported extensions
+
+By default, know indexes these file types (src/db.py:29-54):
+
+**Documents:** `.md`, `.txt`, `.pdf`, `.docx`, `.pptx`, `.html`
+
+**Code:** `.py`, `.js`, `.ts`, `.jsx`, `.tsx`, `.go`, `.rs`, `.java`, `.c`, `.cpp`, `.h`, `.hpp`, `.rb`, `.sh`, `.lua`, `.swift`
+
+### Custom extension filter
+
+```bash
+# Index only markdown and text files
+know index --ext .md --ext .txt
+
+# Comma-separated extensions
+know index --ext ".py,.js,.ts"
+
+# The dot prefix is optional
+know index --ext md,txt
+```
+
+The extension filter is processed in src/know.py:238-245:
+
+```python
+processed_exts = []
+if extensions:
+    for ext in extensions:
+        for e in ext.split(","):
+            e = e.strip()
+            if e:
+                processed_exts.append(e if e.startswith(".") else f".{e}")
+ext_filter = processed_exts or SUPPORTED_EXTENSIONS
+```
+
+<Warning>
+Extension filtering only applies during indexing, not during search. Once files are indexed, they remain searchable regardless of extension filters used in subsequent operations.
+</Warning>
+
+## Timestamp filtering (--since)
+
+The `--since` flag filters files based on their last modification time, supporting both relative and absolute timestamps.
+
+### Relative timestamps
+
+```bash
+# Files modified in the last 7 days
+know index --since 7d
+
+# Last 12 hours
+know search "bug fix" --since 12h
+
+# Last 30 minutes
+know index --since 30m
+
+# Last 2 weeks
+know index --since 2w
+```
+
+### Absolute timestamps
+
+```bash
+# Specific date (YYYY-MM-DD)
+know index --since 2024-01-15
+
+# ISO format with time
+know search "deployment" --since 2024-03-01T14:30:00
+```
+
+### Implementation details
+
+The `_parse_since()` function (src/know.py:38-53) handles timestamp parsing:
+
+```python
+def _parse_since(since: Optional[str]) -> float | None:
+    if not since:
+        return None
+    value = since.strip()
+    if not value:
+        return None
+    unit_map = {"m": 60, "h": 3600, "d": 86400, "w": 604800}
+    unit = value[-1].lower()
+    if unit in unit_map and value[:-1].isdigit():
+        delta = int(value[:-1]) * unit_map[unit]
+        return (datetime.now() - timedelta(seconds=delta)).timestamp()
+    if "T" in value:
+        dt = datetime.fromisoformat(value)
+    else:
+        dt = datetime.strptime(value, "%Y-%m-%d")
+    return dt.timestamp()
+```
+
+The filter compares file modification times during both indexing and search (src/db.py:124-131):
+
+```python
+if since_timestamp is not None:
+    filtered = []
+    for doc in documents:
+        source_path = doc.metadata["file_path"]
+        mtime = Path(source_path).stat().st_mtime
+        if mtime >= since_timestamp:
+            filtered.append(doc)
+    documents = filtered
+```
+
+### Supported time units
+
+| Unit | Seconds | Example |
+|------|---------|----------|
+| `m` | 60 | `30m` = 30 minutes |
+| `h` | 3,600 | `12h` = 12 hours |
+| `d` | 86,400 | `7d` = 7 days |
+| `w` | 604,800 | `2w` = 2 weeks |
+
+## Combining filters
+
+All filters can be used together to create precise queries:
+
+```bash
+# Index Python files modified in the last day, only in src/
+know index --ext .py --since 1d --glob "src/**"
+
+# Search recent markdown files in docs/
+know search "authentication" --glob "docs/**/*.md" --since 7d
+
+# Multiple extensions with glob patterns
+know index --ext .ts,.tsx --glob "src/components/**" --since 2024-03-01
+```
+
+### Filter application order
+
+1. **Extension filter** - Applied during initial file discovery
+2. **Glob filter** - Applied to documents after loading
+3. **Timestamp filter** - Applied after glob filtering
+4. **Cache check** - Skips unchanged files (during indexing)
+5. **Deduplication** - Removes duplicate content hashes
+
+<Note>
+Filters are applied in the same order during both indexing and search operations. During search, glob and timestamp filters are applied to search results in `_filter_items()` (src/db.py:316-342).
+</Note>
+
+## Performance considerations
+
+### Filter placement matters
+
+- **Extension filters** are most efficient (applied first)
+- **Glob filters** require path matching on all discovered files
+- **Timestamp filters** require filesystem stat calls
+
+### Over-fetching for filtered searches
+
+When filters are applied during search, the system fetches extra candidates to ensure enough results after filtering (src/db.py:442-444):
+
+```python
+needs_filter = bool(include_globs) or since_timestamp is not None
+base_limit = max(limit, 10) if benchmark else limit
+candidate_limit = max(base_limit * 3, 20) if needs_filter else base_limit
+```
+
+This retrieves 3x the requested limit (minimum 20) to account for filtered-out results.
+
+## Error handling
+
+Invalid `--since` values trigger a clear error message (src/know.py:112-116):
+
+```bash
+$ know index --since "invalid"
+[red]Error:[/] --since must be like 7d, 12h, 30m, or 2024-01-15
+```
+
+## Examples
+
+### Incremental documentation updates
+
+```bash
+# Index only documentation modified today
+know index --glob "docs/**/*.md" --since 1d
+
+# Search within recently updated files
+know search "API changes" --since 24h
+```
+
+### Code-specific searches
+
+```bash
+# Search only Python test files
+know search "unittest" --glob "**/test_*.py"
+
+# Recent TypeScript components
+know search "useState" --ext .tsx --since 7d --glob "src/components/**"
+```
+
+### Focused indexing
+
+```bash
+# Index only specific directories with multiple patterns
+know index --glob "src/**/*.py,tests/**/*.py,docs/**/*.md"
+
+# Index recent changes across specific file types
+know index --ext .py,.js,.md --since 3d
+```

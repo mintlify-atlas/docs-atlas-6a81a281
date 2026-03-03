@@ -1,0 +1,639 @@
+---
+title: Maintenance
+description: Keep your knowledge base optimized with pruning orphaned chunks, clearing the index, and managing cache files
+---
+
+Regular maintenance keeps your know index clean, fast, and accurate. This guide covers pruning, cache management, and index optimization.
+
+## Understanding the index structure
+
+Know stores data in the `./know_index` directory:
+
+```
+./know_index/
+├── chroma.sqlite3          # Vector database
+├── file_cache.json         # Indexing cache
+└── bm25/                   # BM25 index cache
+    ├── index.pkl
+    └── ids.pkl
+```
+
+<Tip>
+The index directory is created in your current working directory when you first run `know index`. Always run know commands from the same location to access your index.
+</Tip>
+
+## Pruning orphaned chunks
+
+When you delete or move files, their chunks remain in the index. Use `prune` to remove these orphaned chunks:
+
+```bash
+know prune
+```
+
+### How pruning works
+
+<Steps>
+  <Step title="Scan the index">
+    Know retrieves all chunks from the index and checks their source file paths.
+  </Step>
+  
+  <Step title="Check file existence">
+    For each unique file path, know verifies if the file still exists on disk.
+  </Step>
+  
+  <Step title="Remove orphaned chunks">
+    Chunks from deleted or moved files are removed from:
+    - ChromaDB collection
+    - File cache (`file_cache.json`)
+  </Step>
+  
+  <Step title="Report results">
+    Know displays how many chunks were removed and how many remain.
+  </Step>
+</Steps>
+
+### Example output
+
+```
+Pruned 342 orphaned chunks (2,158 remaining)
+```
+
+If no orphaned chunks exist:
+```
+No orphaned chunks found
+```
+
+## Dry run pruning
+
+Preview what would be pruned without making changes:
+
+```bash
+know prune --dry
+```
+
+Output:
+```
+Dry run: Would remove 342 orphaned chunks (from 12 deleted files)
+```
+
+<Tip>
+Always run `--dry` first to see what will be removed:
+
+```bash
+know prune --dry
+know prune  # Run actual prune if results look good
+```
+</Tip>
+
+## Detailed pruning logs
+
+See which files are being pruned:
+
+```bash
+know prune --log
+know prune -l
+```
+
+Output:
+```
+Orphaned: /Users/username/projects/old-repo/README.md
+Orphaned: /Users/username/notes/deleted.md
+Orphaned: /Users/username/temp/draft.txt
+Pruned 342 orphaned chunks (2,158 remaining)
+```
+
+<CodeGroup>
+```bash Preview with details
+know prune --dry --log
+```
+
+```bash Prune with logs
+know prune --log
+```
+</CodeGroup>
+
+## When to prune
+
+Run pruning in these scenarios:
+
+<CardGroup cols={2}>
+  <Card title="After removing directories" icon="folder-minus">
+    ```bash
+    know remove ~/old-project
+    know prune
+    ```
+    Clean up chunks from removed directories
+  </Card>
+  
+  <Card title="After deleting files" icon="trash">
+    ```bash
+    # After deleting files manually
+    know prune
+    ```
+    Remove chunks from deleted files
+  </Card>
+  
+  <Card title="After moving files" icon="arrows-turn-right">
+    ```bash
+    # After reorganizing your filesystem
+    know prune
+    ```
+    Remove old location chunks
+  </Card>
+  
+  <Card title="Regular maintenance" icon="calendar">
+    ```bash
+    # Weekly or monthly
+    know prune
+    ```
+    Keep index clean over time
+  </Card>
+</CardGroup>
+
+## Clearing the entire index
+
+Completely reset the index and start fresh:
+
+```bash
+know reset
+```
+
+<Warning>
+This command immediately deletes:
+- All chunks in the ChromaDB collection
+- The BM25 index cache
+- The file cache
+
+This action is **irreversible**. You must re-index all directories after reset.
+</Warning>
+
+### What gets cleared
+
+<Tabs>
+  <Tab title="ChromaDB collection">
+    The `documents` collection is deleted and recreated empty.
+    
+    All vector embeddings and metadata are removed.
+  </Tab>
+  
+  <Tab title="BM25 cache">
+    The `./know_index/bm25/` directory is deleted.
+    
+    BM25 index will be rebuilt on next search using BM25 mode.
+  </Tab>
+  
+  <Tab title="File cache">
+    The `./know_index/file_cache.json` file is deleted.
+    
+    All files will be re-indexed on next `know index`.
+  </Tab>
+</Tabs>
+
+<Note>
+The `~/.know_dirs` watch list is NOT affected by reset. Your directory list remains intact.
+</Note>
+
+### After reset
+
+```bash
+know reset
+# Output: Collection cleared
+
+know dirs
+# Shows your watch list (unchanged)
+
+know index
+# Re-indexes all watched directories
+```
+
+## File cache management
+
+### Understanding the cache
+
+Know uses `./know_index/file_cache.json` to track:
+- Which files have been indexed
+- File modification time (mtime)
+- File size
+- Chunk configuration (size, overlap)
+
+### Cache structure
+
+<Accordion title="Example file_cache.json">
+```json
+{
+  "config": {
+    "chunk_size": 512,
+    "chunk_overlap": 50
+  },
+  "files": {
+    "/Users/username/notes/README.md": {
+      "mtime": 1709500800.0,
+      "size": 4096,
+      "indexed": true
+    },
+    "/Users/username/docs/guide.md": {
+      "mtime": 1709587200.0,
+      "size": 8192,
+      "indexed": true
+    }
+  }
+}
+```
+</Accordion>
+
+### How the cache works
+
+<Steps>
+  <Step title="Check cache on index">
+    When indexing, know checks if file exists in cache with matching mtime and size.
+  </Step>
+  
+  <Step title="Skip unchanged files">
+    If file hasn't changed, it's skipped:
+    ```
+    OK Total: 25 new, 342 unchanged
+    ```
+  </Step>
+  
+  <Step title="Re-index modified files">
+    Modified files (different mtime or size) are re-indexed.
+  </Step>
+  
+  <Step title="Validate chunk config">
+    If chunk size or overlap changed, entire cache is invalidated.
+  </Step>
+</Steps>
+
+### Cache invalidation scenarios
+
+<AccordionGroup>
+  <Accordion title="Changed chunk settings">
+    If you change `--chunk-size` or `--overlap`, the cache is ignored:
+    
+    ```bash
+    # Previous indexing used defaults (512, 50)
+    know index
+    
+    # New settings invalidate cache
+    know index --chunk-size 1024 --overlap 100
+    # All files re-indexed
+    ```
+  </Accordion>
+  
+  <Accordion title="Using --force flag">
+    Force re-indexing clears the cache:
+    
+    ```bash
+    know index --force
+    ```
+  </Accordion>
+  
+  <Accordion title="Manual deletion">
+    Deleting `file_cache.json` forces complete re-index:
+    
+    ```bash
+    rm ./know_index/file_cache.json
+    know index
+    ```
+  </Accordion>
+  
+  <Accordion title="Pruning updates cache">
+    Pruning removes deleted file entries from cache:
+    
+    ```bash
+    know prune
+    # file_cache.json cleaned of deleted files
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## BM25 index cache
+
+Know caches the BM25 index for faster lexical searches:
+
+```
+./know_index/bm25/
+├── index.pkl    # BM25 retriever object
+└── ids.pkl      # Document IDs
+```
+
+### How BM25 caching works
+
+<Steps>
+  <Step title="First BM25 search">
+    When you first use `--bm25` or `--hybrid`, know builds the index:
+    ```bash
+    know search "query" --bm25
+    # Builds BM25 index from all documents
+    ```
+  </Step>
+  
+  <Step title="Cache for future searches">
+    The BM25 index is saved to disk for reuse.
+  </Step>
+  
+  <Step title="Validate on search">
+    Before using cached index, know checks if document count matches.
+  </Step>
+  
+  <Step title="Rebuild if stale">
+    If document count changed, BM25 index is rebuilt automatically.
+  </Step>
+</Steps>
+
+### When BM25 cache is invalidated
+
+- Adding new documents to index
+- Pruning orphaned chunks
+- Running `know reset`
+- Document count changed
+
+<Note>
+You don't need to manually manage the BM25 cache. Know automatically rebuilds when needed.
+</Note>
+
+## Maintenance workflows
+
+<Tabs>
+  <Tab title="Weekly maintenance">
+    ```bash
+    # Update index with recent changes
+    know index --since 7d
+    
+    # Clean up orphaned chunks
+    know prune
+    
+    # Verify results
+    know search "test query" -n 3
+    ```
+  </Tab>
+  
+  <Tab title="After major changes">
+    ```bash
+    # Preview what would be pruned
+    know prune --dry
+    
+    # Prune orphaned chunks
+    know prune
+    
+    # Re-index everything
+    know index --force
+    ```
+  </Tab>
+  
+  <Tab title="Fresh start">
+    ```bash
+    # Clear everything
+    know reset
+    
+    # Verify watch list
+    know dirs
+    
+    # Re-index from scratch
+    know index --log
+    ```
+  </Tab>
+  
+  <Tab title="Moving to new location">
+    ```bash
+    # Copy watch list file
+    cp ~/.know_dirs ~/.know_dirs.backup
+    
+    # Start fresh in new directory
+    cd ~/new-workspace
+    cp ~/.know_dirs.backup ~/.know_dirs
+    
+    # Index will be created in new location
+    know index
+    ```
+  </Tab>
+</Tabs>
+
+## Troubleshooting
+
+### Large index size
+
+If `./know_index` is using too much disk space:
+
+<Steps>
+  <Step title="Check what's indexed">
+    ```bash
+    know dirs
+    ```
+  </Step>
+  
+  <Step title="Prune orphaned chunks">
+    ```bash
+    know prune --dry
+    know prune
+    ```
+  </Step>
+  
+  <Step title="Remove unwanted directories">
+    ```bash
+    know remove ~/large-directory
+    know prune
+    ```
+  </Step>
+  
+  <Step title="Use filters during indexing">
+    ```bash
+    # Only index specific file types
+    know index --force --ext .md --ext .txt
+    ```
+  </Step>
+</Steps>
+
+### Slow searches
+
+If searches are taking too long:
+
+<AccordionGroup>
+  <Accordion title="Try BM25 mode">
+    BM25 is faster for keyword queries:
+    ```bash
+    know search "query" --bm25
+    ```
+  </Accordion>
+  
+  <Accordion title="Reduce result limit">
+    Fewer results return faster:
+    ```bash
+    know search "query" -n 3
+    ```
+  </Accordion>
+  
+  <Accordion title="Rebuild BM25 cache">
+    Delete and rebuild BM25 cache:
+    ```bash
+    rm -rf ./know_index/bm25
+    know search "query" --bm25
+    ```
+  </Accordion>
+  
+  <Accordion title="Prune the index">
+    Smaller index = faster searches:
+    ```bash
+    know prune
+    ```
+  </Accordion>
+</AccordionGroup>
+
+### Stale results
+
+If search results seem outdated:
+
+<Steps>
+  <Step title="Index recent changes">
+    ```bash
+    know index --since 7d
+    ```
+  </Step>
+  
+  <Step title="Force full re-index">
+    ```bash
+    know index --force
+    ```
+  </Step>
+  
+  <Step title="Verify cache">
+    ```bash
+    cat ./know_index/file_cache.json | jq '.files | keys'
+    ```
+  </Step>
+</Steps>
+
+### Cache corruption
+
+If you suspect cache issues:
+
+```bash
+# Delete cache and re-index
+rm ./know_index/file_cache.json
+know index
+```
+
+Or start completely fresh:
+
+```bash
+know reset
+know index
+```
+
+## Index location
+
+<Warning>
+The `./know_index` directory is created in your **current working directory**. Always run know from the same location or your index won't be found.
+</Warning>
+
+### Using know from different directories
+
+<Tabs>
+  <Tab title="Same workspace">
+    Always `cd` to your workspace first:
+    
+    ```bash
+    cd ~/workspace
+    know search "query"
+    ```
+  </Tab>
+  
+  <Tab title="Multiple workspaces">
+    Each directory has its own index:
+    
+    ```bash
+    # Workspace 1
+    cd ~/work
+    know index
+    
+    # Workspace 2  
+    cd ~/personal
+    know index
+    
+    # Different indexes!
+    ```
+  </Tab>
+  
+  <Tab title="Centralized index">
+    Create index in one location and always work there:
+    
+    ```bash
+    mkdir ~/knowledge
+    cd ~/knowledge
+    know add ~/projects
+    know add ~/notes
+    know index
+    
+    # Always cd here first
+    cd ~/knowledge
+    know search "query"
+    ```
+  </Tab>
+</Tabs>
+
+## Best practices
+
+<CardGroup cols={2}>
+  <Card title="Regular pruning" icon="broom">
+    Run `know prune` weekly or after major file operations
+  </Card>
+  
+  <Card title="Incremental indexing" icon="clock">
+    Use `--since 7d` for daily/weekly updates instead of full re-index
+  </Card>
+  
+  <Card title="Backup watch list" icon="floppy-disk">
+    Keep a backup of `~/.know_dirs`:
+    ```bash
+    cp ~/.know_dirs ~/.know_dirs.backup
+    ```
+  </Card>
+  
+  <Card title="Consistent location" icon="location-dot">
+    Always run know from the same directory to access your index
+  </Card>
+</CardGroup>
+
+## Summary
+
+<Steps>
+  <Step title="Prune regularly">
+    ```bash
+    know prune
+    ```
+    Remove orphaned chunks from deleted files
+  </Step>
+  
+  <Step title="Update incrementally">
+    ```bash
+    know index --since 7d
+    ```
+    Index recent changes without full re-index
+  </Step>
+  
+  <Step title="Reset when needed">
+    ```bash
+    know reset
+    know index
+    ```
+    Start fresh if index becomes problematic
+  </Step>
+  
+  <Step title="Monitor index size">
+    ```bash
+    du -sh ./know_index
+    ```
+    Keep track of disk usage
+  </Step>
+</Steps>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Managing directories" icon="folder" href="/guides/managing-directories">
+    Learn how to add and remove watched directories
+  </Card>
+  <Card title="Search options" icon="magnifying-glass" href="/guides/search-options">
+    Master search filtering and output options
+  </Card>
+</CardGroup>

@@ -1,0 +1,68 @@
+---
+title: know reset
+description: Clear the entire index
+---
+
+## Usage
+
+```bash
+know reset
+```
+
+Clear the entire index, removing all indexed chunks and metadata. This does not affect the watch list or source files.
+
+## Parameters
+
+This command takes no parameters or options.
+
+## Behavior
+
+- Removes all indexed chunks from the database
+- Clears all embeddings and metadata
+- Does not affect the watch list (directories added with `know add`)
+- Does not delete or modify source files
+- After running `reset`, you need to run `know index` to rebuild the index
+
+## Examples
+
+### Clear the entire index
+
+```bash
+know reset
+```
+
+```
+Index cleared
+```
+
+### Rebuild the index after reset
+
+```bash
+know reset
+know index
+```
+
+```
+Index cleared
+Indexing 2 directories
+OK Total: 127 new, 0 unchanged
+```
+
+## When to use reset
+
+- When you want to completely rebuild the index from scratch
+- After changing chunk size or overlap settings
+- When troubleshooting index corruption issues
+- Before switching embedding models (if manually configuring)
+- To free up all database space
+
+## Alternatives
+
+- `know index --force` - Re-index everything without manually clearing first
+- `know prune` - Remove only orphaned chunks (less aggressive)
+
+## Related commands
+
+- `know index --force` - Clear and re-index in one command
+- `know prune` - Remove orphaned chunks from deleted files
+- `know dirs` - List watched directories (unaffected by reset)

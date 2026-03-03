@@ -1,0 +1,54 @@
+---
+title: know remove
+description: Remove a directory from the watch list
+---
+
+## Usage
+
+```bash
+know remove <directory>
+```
+
+Remove a directory from the watch list. This does not delete the indexed content; use `know reset` to clear the entire index or `know prune` to remove orphaned chunks.
+
+## Parameters
+
+<ParamField path="directory" type="Path" required>
+  Path to the directory to remove from the watch list. The path will be resolved to an absolute path.
+</ParamField>
+
+## Behavior
+
+- The directory path is resolved to an absolute path before removal
+- If the directory is in the watch list, it is removed
+- If the directory is not in the watch list, a warning is displayed
+- The watch list is stored in `~/.know_dirs`
+- Removing a directory does not delete its indexed chunks from the database
+
+## Examples
+
+### Remove a directory
+
+```bash
+know remove ~/Documents/notes
+```
+
+```
+Removed /home/user/Documents/notes
+```
+
+### Attempting to remove a directory not in the watch list
+
+```bash
+know remove ~/Documents/other
+```
+
+```
+Not in watchlist: /home/user/Documents/other
+```
+
+## Related commands
+
+- `know dirs` - List all watched directories
+- `know prune` - Remove orphaned chunks from deleted files
+- `know reset` - Clear the entire index

@@ -1,0 +1,305 @@
+---
+title: Search modes
+description: Dense vector search, BM25 lexical search, and hybrid fusion explained
+---
+
+The `know` CLI offers three search strategies optimized for different query types: dense vector search for semantic understanding, BM25 for exact keyword matching, and hybrid search that combines both.
+
+## Dense vector search (default)
+
+Dense search uses ChromaDB's embedding-based similarity to find semantically related chunks:
+
+```python src/db.py
+results = collection.query(query_texts=[query], n_results=limit)
+```
+
+### How it works
+
+1. Your query is embedded using the same model that embedded your documents
+2. ChromaDB computes cosine similarity (or L2 distance) between query and document embeddings
+3. Results are ranked by distance (lower = more similar)
+
+```python src/db.py
+items.append(
+    SearchItem(
+        key=item_id,
+        doc=doc,
+        meta=meta,
+        distance=dist,  # Lower distance = better match
+    )
+)
+```
+
+### When to use dense search
+
+<Note>
+Dense search excels at:
+- Conceptual queries: "how to handle authentication"
+- Synonym matching: "vehicle" matches "car", "truck", "automobile"
+- Cross-lingual understanding: embeddings capture meaning across languages
+- Paraphrased queries: finds content even if wording differs
+</Note>
+
+### Example usage
+
+```bash
+know search "error handling strategies"
+```
+
+This finds chunks about error handling, exception management, fault tolerance, etc., even if they don't use the exact phrase "error handling strategies".
+
+## BM25 lexical search
+
+BM25 (Best Matching 25) is a probabilistic keyword-based ranking algorithm:
+
+```python src/bm25.py
+corpus_tokens = bm25s.tokenize(
+    documents,
+    stopwords="en",
+    stemmer=_STEMMER,
+    show_progress=False,
+)
+retriever = bm25s.BM25()
+retriever.index(corpus_tokens, show_progress=False)
+```
+
+### How it works
+
+BM25 scores documents based on:
+- **Term frequency** - How often query terms appear in the document
+- **Inverse document frequency** - Rare terms are weighted higher
+- **Document length normalization** - Prevents bias toward long documents
+
+<Accordion title="BM25 tokenization pipeline">
+Before indexing, documents are preprocessed:
+
+```python src/bm25.py
+_STEMMER = Stemmer.Stemmer("english")
+
+query_tokens = bm25s.tokenize(
+    query,
+    stopwords="en",      # Remove "the", "is", "at", etc.
+    stemmer=_STEMMER,     # "running" -> "run", "flies" -> "fli"
+    show_progress=False,
+)
+```
+
+1. **Tokenization** - Split text into words
+2. **Stopword removal** - Filter common words ("the", "is", "and")
+3. **Stemming** - Reduce words to root form ("running" → "run")
+</Accordion>
+
+### BM25 caching
+
+Building the BM25 index can be expensive for large collections. The system caches the index:
+
+```python src/bm25.py
+def load_cached_index(expected_count: int) -> tuple[bm25s.BM25, list[str]] | None:
+    if not BM25_META_PATH.exists():
+        return None
+    meta = json.loads(BM25_META_PATH.read_text())
+    if meta.get("count") != expected_count:
+        return None
+    retriever = bm25s.BM25.load(str(BM25_CACHE_DIR), load_corpus=False)
+    ids = json.loads(BM25_IDS_PATH.read_text())
+    return retriever, ids
+```
+
+The cache is stored in `./know_index/bm25/` and includes:
+- **meta.json** - Document count for validation
+- **ids.json** - Mapping of document IDs
+- BM25 index files (vocab, idf scores, etc.)
+
+<Warning>
+The BM25 cache is invalidated if the document count changes. Adding or removing documents triggers a rebuild on the next BM25 search.
+</Warning>
+
+### When to use BM25
+
+<Tip>
+BM25 excels at:
+- Exact term matching: "TypeError: cannot read property"
+- Code search: function names, variable names, error codes
+- Acronyms and abbreviations: "JWT", "API", "CRUD"
+- Unique identifiers: ticket numbers, model names
+</Tip>
+
+### Example usage
+
+```bash
+know search --bm25 "DatabaseConnectionError"
+```
+
+This finds exact matches for the error class name, even if semantically similar terms (like "database connection failed") have different embeddings.
+
+## Hybrid search
+
+Hybrid search combines dense and BM25 results using Reciprocal Rank Fusion (RRF):
+
+```python src/db.py
+if mode == "hybrid":
+    dense_items = _query_items(
+        dense_collection, query, max(limit * 3, 20), include_globs, since_timestamp
+    )
+    bm25_items = _bm25_query_items(
+        query, max(limit * 3, 20), include_globs, since_timestamp
+    )
+    fused = rrf_fuse([dense_items, bm25_items], limit=limit)
+```
+
+### Reciprocal Rank Fusion (RRF)
+
+RRF merges ranked lists without requiring score normalization:
+
+```python src/retrieval.py
+def rrf_fuse(
+    result_lists: Iterable[list[SearchItem]], k: int = 60, limit: int = 5
+) -> list[FusedItem]:
+    scores: dict[str, dict] = {}
+    for items in result_lists:
+        for rank, item in enumerate(items, 1):
+            entry = scores.get(item.key)
+            if entry is None:
+                scores[item.key] = {"item": item, "score": 0.0}
+            scores[item.key]["score"] += 1.0 / (k + rank)
+
+    fused = [FusedItem(v["item"], v["score"]) for v in scores.values()]
+    fused.sort(key=lambda x: x.score, reverse=True)
+    return fused[:limit]
+```
+
+### How RRF works
+
+For each result list, RRF assigns a score based on rank position:
+
+```
+score = 1 / (k + rank)
+```
+
+Where:
+- `k = 60` (constant to reduce variance)
+- `rank` starts at 1 for the top result
+
+**Example:**
+
+Dense results:
+1. doc_A (rank 1): 1/(60+1) = 0.0164
+2. doc_B (rank 2): 1/(60+2) = 0.0161
+3. doc_C (rank 3): 1/(60+3) = 0.0159
+
+BM25 results:
+1. doc_B (rank 1): 1/(60+1) = 0.0164
+2. doc_D (rank 2): 1/(60+2) = 0.0161
+3. doc_A (rank 3): 1/(60+3) = 0.0159
+
+Fused scores:
+- doc_A: 0.0164 + 0.0159 = 0.0323
+- doc_B: 0.0161 + 0.0164 = 0.0325 ← highest (ranked #1)
+- doc_C: 0.0159
+- doc_D: 0.0161
+
+<Info>
+RRF naturally handles different score scales. Dense search uses distances (lower is better), while BM25 uses scores (higher is better). RRF only cares about rank order.
+</Info>
+
+### Oversampling strategy
+
+Hybrid search retrieves 3x the requested limit from each system:
+
+```python src/db.py
+dense_items = _query_items(
+    dense_collection, query, max(limit * 3, 20), include_globs, since_timestamp
+)
+bm25_items = _bm25_query_items(
+    query, max(limit * 3, 20), include_globs, since_timestamp
+)
+```
+
+This ensures RRF has enough candidates to find the truly best results. Without oversampling, items ranked #6-10 in both systems would never appear in the top 5 fused results.
+
+### When to use hybrid search
+
+<Note>
+Hybrid search is ideal when:
+- You're unsure if the query is semantic or keyword-based
+- The query contains both concepts and specific terms
+- You want comprehensive recall across both search strategies
+</Note>
+
+### Example usage
+
+```bash
+know search --hybrid "JWT authentication implementation"
+```
+
+This finds:
+- **Via BM25**: Exact matches for "JWT" (keyword)
+- **Via dense**: Semantic matches for authentication concepts
+- **Fused**: Documents containing JWT *and* discussing auth patterns rank highest
+
+## Benchmark mode
+
+Compare dense and BM25 side-by-side:
+
+```bash
+know search --benchmark "database connection pooling"
+```
+
+This returns:
+
+```python src/db.py
+BenchmarkResult(
+    query=query,
+    dense=ResultSet(...),  # Dense top-10 results
+    bm25=ResultSet(...),   # BM25 top-10 results
+)
+```
+
+Use benchmark mode to understand which search strategy works best for your queries.
+
+## Filtering in search
+
+All search modes support filtering:
+
+### Glob patterns
+
+```bash
+know search --glob "docs/**" "authentication"
+```
+
+### Time-based filters
+
+```bash
+know search --since 7d "new features"
+```
+
+### Filter implementation
+
+Filters are applied *after* retrieval to ensure enough results:
+
+```python src/db.py
+needs_filter = bool(include_globs) or since_timestamp is not None
+candidate_limit = max(base_limit * 3, 20) if needs_filter else base_limit
+
+dense_items = _query_items(
+    dense_collection,
+    query,
+    candidate_limit,  # Fetch 3x, then filter
+    include_globs,
+    since_timestamp,
+)
+```
+
+<Tip>
+When using filters, the system automatically retrieves 3x the requested limit before filtering. This ensures you still get enough results even if many are filtered out.
+</Tip>
+
+## Performance comparison
+
+| Feature | Dense | BM25 | Hybrid |
+|---------|-------|------|--------|
+| Semantic understanding | ✅ Excellent | ❌ None | ✅ Excellent |
+| Exact keyword matching | ⚠️ Limited | ✅ Excellent | ✅ Excellent |
+| Query speed | Fast | Very fast | Moderate |
+| Cold start | Instant | Builds index on first use | Builds index on first use |
+| Best for | Concepts, questions | Code, identifiers | General purpose |

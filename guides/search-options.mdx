@@ -1,0 +1,511 @@
+---
+title: Search options
+description: Master semantic search with result limits, glob filtering, time-based queries, search modes, and benchmark comparisons
+---
+
+Know provides flexible search capabilities with multiple modes and filtering options. This guide covers all search features.
+
+## Basic search
+
+Search indexed content with a natural language query:
+
+```bash
+know search "your query here"
+know "your query here"  # Shorthand syntax
+```
+
+<Tip>
+Know automatically prefixes arguments with `search` if the first argument isn't a recognized command. Both forms are equivalent.
+</Tip>
+
+**Default behavior:**
+- Dense vector search (semantic)
+- Returns top 5 results
+- Rich formatted output
+- Searches all indexed content
+
+## Result limit
+
+Control the number of results with `--limit` or `-n`:
+
+```bash
+know search "python error handling" --limit 10
+know search "database optimization" -n 3
+```
+
+**Default:** `5` results
+
+<CodeGroup>
+```bash Quick overview
+know search "kubernetes config" -n 3
+```
+
+```bash Comprehensive results
+know search "authentication flow" -n 20
+```
+
+```bash Single best match
+know search "API rate limiting" -n 1
+```
+</CodeGroup>
+
+## Search modes
+
+Know supports three search modes:
+
+<Tabs>
+  <Tab title="Dense (default)">
+    **Semantic vector search** using embeddings
+    
+    ```bash
+    know search "error handling patterns"
+    ```
+    
+    - Best for: Conceptual queries, synonyms, natural language
+    - Understands meaning and context
+    - Finds semantically similar content
+    - Default mode (no flag needed)
+    
+    **Example queries:**
+    - "authentication strategies"
+    - "optimizing database queries"
+    - "handling race conditions"
+  </Tab>
+  
+  <Tab title="BM25">
+    **Lexical keyword search** using BM25 algorithm
+    
+    ```bash
+    know search "error handling" --bm25
+    ```
+    
+    - Best for: Exact terms, code symbols, specific names
+    - Traditional keyword matching
+    - Fast and precise for exact terms
+    
+    **Example queries:**
+    - "ValueError exception"
+    - "function calculateTotal"
+    - "class UserRepository"
+  </Tab>
+  
+  <Tab title="Hybrid">
+    **Combined semantic + lexical search** using reciprocal rank fusion (RRF)
+    
+    ```bash
+    know search "authentication" --hybrid
+    ```
+    
+    - Best for: Complex queries, balanced results
+    - Combines strengths of both approaches
+    - Automatically fuses and ranks results
+    
+    **Example queries:**
+    - "JWT token validation"
+    - "Redis caching strategy"
+    - "PostgreSQL query optimization"
+  </Tab>
+</Tabs>
+
+<Warning>
+You can only use ONE search mode at a time. Specifying both `--bm25` and `--hybrid` will result in an error.
+</Warning>
+
+## Glob filtering
+
+Filter search results by file path patterns using `--glob` or `-g`:
+
+```bash
+know search "API documentation" --glob "**/*.md"
+know search "test fixtures" -g "tests/**"
+```
+
+<Note>
+Glob filtering is applied AFTER search, filtering the candidate results. For better performance with large result sets, know fetches more candidates (limit × 3, minimum 20) then filters.
+</Note>
+
+### Common glob patterns
+
+<CodeGroup>
+```bash Markdown files only
+know search "deployment guide" --glob "**/*.md"
+```
+
+```bash Specific directory
+know search "config options" --glob "docs/**"
+```
+
+```bash Multiple patterns
+know search "API routes" --glob "src/**/*.py" --glob "api/**/*.py"
+```
+
+```bash Specific files
+know search "installation" --glob "README.md" --glob "INSTALL.md"
+```
+</CodeGroup>
+
+## Time-based filtering
+
+Search only recently modified files using `--since`:
+
+```bash
+know search "bug fix" --since 7d
+know search "new feature" --since 2024-01-15
+```
+
+### Time format
+
+<Tabs>
+  <Tab title="Relative time">
+    ```bash
+    know search "updates" --since 30m  # Last 30 minutes
+    know search "changes" --since 12h  # Last 12 hours
+    know search "recent" --since 7d    # Last 7 days
+    know search "weekly" --since 2w    # Last 2 weeks
+    ```
+    
+    **Units:**
+    - `m` - minutes
+    - `h` - hours
+    - `d` - days
+    - `w` - weeks
+  </Tab>
+  
+  <Tab title="Absolute date">
+    ```bash
+    know search "features" --since 2024-01-15
+    know search "updates" --since 2024-01-15T10:30:00
+    ```
+    
+    Supports:
+    - Date: `YYYY-MM-DD`
+    - DateTime: `YYYY-MM-DDTHH:MM:SS`
+  </Tab>
+</Tabs>
+
+<Tip>
+Invalid time formats will show an error:
+```
+Error: --since must be like 7d, 12h, 30m, or 2024-01-15
+```
+</Tip>
+
+## Combining filters
+
+Filters can be combined for precise searches:
+
+<CodeGroup>
+```bash Recent docs about APIs
+know search "API authentication" --since 7d --glob "docs/**/*.md"
+```
+
+```bash Recent Python code
+know search "database migration" --since 1d --glob "**/*.py" -n 10
+```
+
+```bash Specific timeframe and location
+know search "bug fix" --since 2024-03-01 --glob "src/**" --bm25
+```
+
+```bash Hybrid search with filters
+know search "performance optimization" --hybrid --since 7d -n 15
+```
+</CodeGroup>
+
+## Benchmark mode
+
+Compare dense and BM25 results side-by-side:
+
+```bash
+know search "error handling" --benchmark
+```
+
+Displays two result sets:
+1. Dense (semantic) results
+2. BM25 (lexical) results
+
+<Note>
+In benchmark mode, know fetches at least 10 results for each mode (max of limit and 10) to provide meaningful comparison.
+</Note>
+
+**Use cases:**
+- Understanding which mode works better for your query
+- Testing search quality
+- Evaluating semantic vs keyword matching
+- Optimizing query phrasing
+
+### Example output
+
+```
+┏━━━┳━━━━━━━━━━━┳━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━┓
+┃ # ┃ Distance  ┃ File         ┃ Path             ┃ Snippet            ┃
+┡━━━╇━━━━━━━━━━━╇━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━┩
+│ 1 │  0.3421   │ errors.md    │ ~/docs/errors.md │ Error handling in..│
+│ 2 │  0.4156   │ exceptions.py│ ~/src/except...  │ Custom exception...│
+└───┴───────────┴──────────────┴──────────────────┴────────────────────┘
+                       Dense results: error handling
+
+┏━━━┳━━━━━━━━━━━┳━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━┓
+┃ # ┃ Score     ┃ File         ┃ Path             ┃ Snippet            ┃
+┡━━━╇━━━━━━━━━━━╇━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━┩
+│ 1 │  12.4531  │ exceptions.py│ ~/src/except...  │ def handle_error...│
+│ 2 │  10.2341  │ errors.md    │ ~/docs/errors.md │ Error handling ...│
+└───┴───────────┴──────────────┴──────────────────┴────────────────────┘
+                       BM25 results: error handling
+```
+
+## Output formats
+
+Know supports three output formats:
+
+<Tabs>
+  <Tab title="Rich (default)">
+    Formatted tables with colors and panels
+    
+    ```bash
+    know search "deployment"
+    ```
+    
+    Includes:
+    - Formatted table with results
+    - Syntax highlighting
+    - Top match panel with full context
+    - File metadata (path, chunk index, size)
+  </Tab>
+  
+  <Tab title="Plain text">
+    Simple text output without formatting
+    
+    ```bash
+    know search "deployment" --plain
+    ```
+    
+    Output:
+    ```
+    Results for: deployment
+    1. Distance=0.3421 | deploy.md | ~/docs/deploy.md
+        Deployment process involves...
+    2. Distance=0.4521 | config.py | ~/src/config.py
+        Configure deployment settings...
+    Top match: deploy.md | ~/docs/deploy.md | chunk 0 | 2048 bytes
+    Deployment process involves several steps...
+    ```
+  </Tab>
+  
+  <Tab title="JSON">
+    Structured JSON output
+    
+    ```bash
+    know search "deployment" --json
+    ```
+    
+    Output to stdout:
+    ```json
+    {
+      "query": "deployment",
+      "mode": "dense",
+      "title": "Results for: deployment",
+      "results": [
+        {
+          "rank": 1,
+          "score": "0.3421",
+          "filename": "deploy.md",
+          "path": "~/docs/deploy.md",
+          "snippet": "Deployment process...",
+          "chunk_index": 0,
+          "size_bytes": 2048
+        }
+      ]
+    }
+    ```
+  </Tab>
+</Tabs>
+
+<Warning>
+You cannot use both `--plain` and `--json`. Choose only one output format.
+</Warning>
+
+## JSON output to file
+
+Save JSON results to a file while displaying rich output:
+
+```bash
+know search "API docs" --json-out results.json
+```
+
+This displays rich formatted output to the terminal AND writes JSON to `results.json`.
+
+<Tip>
+Use `--json-out` when you need both human-readable output and machine-readable data:
+
+```bash
+know search "metrics" --json-out metrics.json --limit 20
+```
+</Tip>
+
+### Benchmark JSON output
+
+When using `--benchmark`, JSON includes both result sets:
+
+```json
+{
+  "query": "error handling",
+  "dense": [
+    {"rank": 1, "score": "0.3421", "filename": "errors.md", ...}
+  ],
+  "bm25": [
+    {"rank": 1, "score": "12.4531", "filename": "exceptions.py", ...}
+  ]
+}
+```
+
+## Understanding search results
+
+### Result table columns
+
+<AccordionGroup>
+  <Accordion title="# (Rank)">
+    Position in results, ordered by relevance (1 = most relevant)
+  </Accordion>
+  
+  <Accordion title="Distance / Score">
+    - **Dense mode:** Lower distance = more similar (0.0 = identical)
+    - **BM25 mode:** Higher score = more relevant
+    - **Hybrid mode:** RRF score (higher = better)
+  </Accordion>
+  
+  <Accordion title="File">
+    Filename of the source document
+  </Accordion>
+  
+  <Accordion title="Path">
+    Full path to the file (shortened with `~` for home directory)
+  </Accordion>
+  
+  <Accordion title="Snippet">
+    Preview of matched content (first 200 characters)
+  </Accordion>
+</AccordionGroup>
+
+### Top match panel
+
+The top result is displayed in a panel with:
+- Full file path
+- Chunk index (which chunk within the file)
+- File size in bytes
+- Extended snippet (up to 800 characters)
+
+## Query strategies
+
+<Steps>
+  <Step title="Start with dense search">
+    Use default semantic search for natural language queries:
+    
+    ```bash
+    know search "how to configure authentication"
+    ```
+  </Step>
+  
+  <Step title="Try BM25 for exact terms">
+    Switch to BM25 for specific terms or code:
+    
+    ```bash
+    know search "JWT decode" --bm25
+    ```
+  </Step>
+  
+  <Step title="Use hybrid for best of both">
+    Combine approaches for complex queries:
+    
+    ```bash
+    know search "Redis cache invalidation" --hybrid
+    ```
+  </Step>
+  
+  <Step title="Filter to narrow results">
+    Add filters to focus on specific content:
+    
+    ```bash
+    know search "API design" --glob "docs/**" --since 7d
+    ```
+  </Step>
+</Steps>
+
+## Common patterns
+
+<CodeGroup>
+```bash Find recent changes
+know search "bug fix" --since 1d -n 10
+```
+
+```bash Search specific codebase area
+know search "database query" --glob "src/db/**/*.py"
+```
+
+```bash Compare search modes
+know search "caching strategy" --benchmark
+```
+
+```bash Export for analysis
+know search "performance" --json-out perf.json -n 50
+```
+
+```bash Quick lookup
+know "error handling" -n 1 --plain
+```
+</CodeGroup>
+
+## Error handling
+
+### No index found
+
+If you haven't indexed any content:
+
+```
+No index found.
+To get started, run:
+  know add <dir>
+  know index
+```
+
+### Invalid filters
+
+Invalid `--since` format:
+```
+Error: --since must be like 7d, 12h, 30m, or 2024-01-15
+```
+
+Conflicting search modes:
+```
+Error: Choose only one of --bm25 or --hybrid
+```
+
+Conflicting output formats:
+```
+Error: Choose only one of --plain or --json
+```
+
+## Performance tips
+
+<Tip>
+**Fast searches:**
+- BM25 mode is fastest for keyword queries
+- Lower limits return faster
+- Filters are applied after search, so narrow queries are faster
+
+**Comprehensive searches:**
+- Dense mode for broad conceptual queries
+- Hybrid mode for best quality
+- Increase limit for thorough exploration
+</Tip>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Indexing strategies" icon="filter" href="/guides/indexing-strategies">
+    Optimize what content gets indexed
+  </Card>
+  <Card title="Maintenance" icon="tools" href="/guides/maintenance">
+    Keep your index clean and optimized
+  </Card>
+</CardGroup>

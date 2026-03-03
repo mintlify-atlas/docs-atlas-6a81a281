@@ -1,0 +1,245 @@
+---
+title: Installation
+description: Install know using uv or pipx to get started with semantic search
+---
+
+## Requirements
+
+know requires Python 3.13 or higher. Make sure you have a compatible Python version installed:
+
+```bash
+python --version
+```
+
+<Warning>
+  Python 3.13+ is required. know will not work with earlier Python versions.
+</Warning>
+
+## Install with uv (recommended)
+
+The recommended way to install know is using [uv](https://docs.astral.sh/uv/), a fast Python package installer and resolver.
+
+<Steps>
+  <Step title="Install uv">
+    If you don't have uv installed, follow the [uv installation guide](https://docs.astral.sh/uv/getting-started/installation/).
+    
+    On macOS and Linux:
+    ```bash
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+    ```
+    
+    On Windows:
+    ```powershell
+    powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
+    ```
+  </Step>
+  
+  <Step title="Clone the repository">
+    ```bash
+    git clone https://github.com/ynbh/know.git
+    cd know
+    ```
+  </Step>
+  
+  <Step title="Sync dependencies">
+    ```bash
+    uv sync
+    ```
+    
+    This will install all required dependencies:
+    - `chromadb>=1.4.1` - Vector database for storing embeddings
+    - `llama-index-core>=0.14.13` - Document processing framework
+    - `llama-index-readers-file>=0.5.6` - File readers for multiple formats
+    - `bm25s>=0.1.10` - BM25 lexical search implementation
+    - `PyStemmer>=2.2.0` - Stemming for text preprocessing
+    - `typer` - CLI framework
+  </Step>
+  
+  <Step title="Run know">
+    You can now run know using uv:
+    ```bash
+    uv run know --help
+    ```
+  </Step>
+</Steps>
+
+<Note>
+  When using uv, prefix all know commands with `uv run`, for example: `uv run know add ~/Documents`
+</Note>
+
+## Install with pipx (global installation)
+
+pipx allows you to install know globally in an isolated environment, making the `know` command available system-wide.
+
+<Steps>
+  <Step title="Install pipx">
+    If you don't have pipx installed:
+    
+    On macOS:
+    ```bash
+    brew install pipx
+    pipx ensurepath
+    ```
+    
+    On Linux:
+    ```bash
+    python3 -m pip install --user pipx
+    python3 -m pipx ensurepath
+    ```
+    
+    On Windows:
+    ```powershell
+    python -m pip install --user pipx
+    python -m pipx ensurepath
+    ```
+  </Step>
+  
+  <Step title="Install know from GitHub">
+    ```bash
+    pipx install git+https://github.com/ynbh/know.git
+    ```
+    
+    pipx will:
+    - Create an isolated virtual environment for know
+    - Install all dependencies
+    - Add the `know` command to your PATH
+  </Step>
+  
+  <Step title="Verify installation">
+    ```bash
+    know --help
+    ```
+    
+    You should see the know CLI help output.
+  </Step>
+</Steps>
+
+<Tip>
+  With pipx, you can use `know` directly without any prefix. This is the recommended approach for daily use.
+</Tip>
+
+## Development setup
+
+If you want to contribute to know or modify the source code:
+
+<Steps>
+  <Step title="Clone the repository">
+    ```bash
+    git clone https://github.com/ynbh/know.git
+    cd know
+    ```
+  </Step>
+  
+  <Step title="Install with development dependencies">
+    ```bash
+    uv sync --dev
+    ```
+    
+    This installs know along with development tools like:
+    - `ruff>=0.14.14` - Fast Python linter and formatter
+  </Step>
+  
+  <Step title="Run tests and linting">
+    Format code with ruff:
+    ```bash
+    uv run ruff format .
+    ```
+    
+    Lint code:
+    ```bash
+    uv run ruff check .
+    ```
+  </Step>
+</Steps>
+
+## Verifying your installation
+
+After installation, verify that know is working correctly:
+
+<CodeGroup>
+
+```bash uv
+uv run know --help
+```
+
+```bash pipx
+know --help
+```
+
+</CodeGroup>
+
+You should see output similar to:
+
+```
+Usage: know [OPTIONS] COMMAND [ARGS]...
+
+  know - semantic search CLI
+
+Options:
+  --help  Show this message and exit.
+
+Commands:
+  add     Add a directory to the watch list.
+  dirs    List watched directories.
+  index   Index all watched directories.
+  prune   Remove orphaned chunks from deleted files.
+  remove  Remove a directory from the watch list.
+  reset   Clear the entire index.
+  search  Search indexed documents.
+```
+
+## Next steps
+
+<Card
+  title="Quickstart guide"
+  icon="rocket"
+  href="/quickstart"
+>
+  Learn how to index your first directory and start searching
+</Card>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Python version error">
+    If you see an error about Python version compatibility:
+    
+    ```
+    requires-python = ">=3.13"
+    ```
+    
+    Make sure you're using Python 3.13 or higher. Check your version:
+    ```bash
+    python --version
+    ```
+    
+    You may need to install a newer Python version from [python.org](https://www.python.org/downloads/).
+  </Accordion>
+  
+  <Accordion title="Command not found after pipx install">
+    If `know` is not found after pipx installation, ensure pipx's bin directory is in your PATH:
+    
+    ```bash
+    pipx ensurepath
+    ```
+    
+    Then restart your terminal or source your shell configuration:
+    ```bash
+    source ~/.bashrc  # or ~/.zshrc, ~/.bash_profile, etc.
+    ```
+  </Accordion>
+  
+  <Accordion title="Dependency installation issues">
+    If you encounter issues installing dependencies, particularly with binary packages like ChromaDB:
+    
+    1. Ensure you have build tools installed (gcc, make, etc.)
+    2. On macOS, you may need Xcode Command Line Tools:
+       ```bash
+       xcode-select --install
+       ```
+    3. Try updating pip before installation:
+       ```bash
+       python -m pip install --upgrade pip
+       ```
+  </Accordion>
+</AccordionGroup>

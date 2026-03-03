@@ -1,0 +1,268 @@
+---
+title: Indexing
+description: How know chunks documents, generates embeddings, and stores them in ChromaDB
+---
+
+The `know` CLI indexes your documents through a multi-stage pipeline: file loading, text chunking, embedding generation, and vector storage. This process transforms your local files into searchable knowledge.
+
+## Architecture overview
+
+The indexing system uses three core components:
+
+- **SimpleDirectoryReader** (from llama-index) - Loads files with extension filtering
+- **SentenceSplitter** - Breaks documents into semantic chunks
+- **ChromaDB** - Stores embeddings with metadata in a persistent local database
+
+<Info>
+All index data is stored in `./know_index/` in your current directory. This includes the ChromaDB vector store, BM25 cache, and file cache.
+</Info>
+
+## Document loading
+
+When you run `know index`, the system scans your watched directories for supported files:
+
+```python src/db.py
+reader = SimpleDirectoryReader(
+    input_dir=directory,
+    recursive=recursive,
+    required_exts=ext_filter,
+    filename_as_id=True,
+)
+
+documents = reader.load_data()
+```
+
+### Supported file types
+
+The default configuration supports 24 file extensions across documents and code:
+
+```python src/db.py
+SUPPORTED_EXTENSIONS = [
+    # documents
+    ".md", ".txt", ".pdf", ".docx", ".pptx", ".html",
+    # code
+    ".py", ".js", ".ts", ".jsx", ".tsx", ".go", ".rs",
+    ".java", ".c", ".cpp", ".h", ".hpp", ".rb", ".sh",
+    ".lua", ".swift"
+]
+```
+
+You can override this with the `--ext` flag: `know index --ext .md --ext .py`
+
+## Text chunking
+
+After loading, documents are split into overlapping chunks using `SentenceSplitter`:
+
+```python src/db.py
+splitter = SentenceSplitter(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
+nodes = splitter.get_nodes_from_documents(filtered)
+```
+
+### Default parameters
+
+<Note>
+**chunk_size**: `512` tokens  
+**chunk_overlap**: `50` tokens
+
+These defaults balance semantic coherence with search precision. You can customize them:
+```bash
+know index --chunk-size 1024 --overlap 100
+```
+</Note>
+
+The overlap ensures that concepts spanning chunk boundaries are still captured. For example, with 512-token chunks and 50-token overlap:
+
+- Chunk 1: tokens 0-512
+- Chunk 2: tokens 462-974 (50 tokens overlap with chunk 1)
+- Chunk 3: tokens 924-1436
+
+<Warning>
+Changing `chunk_size` or `chunk_overlap` invalidates your cache. The system will automatically clear the file cache and re-index all documents.
+</Warning>
+
+## Embedding generation
+
+ChromaDB automatically generates embeddings for each chunk using its default embedding function (typically a sentence transformer model). Each chunk is augmented with its filename before embedding:
+
+```python src/db.py
+file_path = Path(source_path)
+doc_text = f"{file_path.name}\n\n{node.text}"
+```
+
+This ensures the filename context is included in the embedding, improving search relevance.
+
+## Vector storage
+
+Embeddings are stored in ChromaDB with rich metadata:
+
+```python src/db.py
+meta = {
+    "path": source_path,
+    "filename": file_path.name,
+    "extension": file_path.suffix,
+    "size_bytes": stat.st_size,
+    "chunk_index": chunk_index,
+    "node_id": node.node_id,
+}
+
+dense_collection.upsert(
+    ids=batch_ids,
+    documents=batch_docs,
+    metadatas=batch_metas,
+)
+```
+
+### Deduplication strategy
+
+Before inserting, the system generates content-based hashes to detect duplicates:
+
+```python src/db.py
+chunk_id = hashlib.md5(
+    f"{source_path}:{chunk_index}:{node.text}".encode()
+).hexdigest()
+```
+
+Duplicate chunks are skipped:
+- **already_indexed** - Chunk ID exists in the database
+- **duplicate_content** - Same content appears multiple times in the current batch
+- **unchanged_file** - File hasn't changed since last index (detected via cache)
+
+## Caching mechanism
+
+The file cache tracks indexed files to skip unchanged documents on subsequent runs. The cache stores file metadata:
+
+```python src/cache.py
+cache_updates[source_path] = {
+    "mtime": stat.st_mtime,      # modification timestamp
+    "size": stat.st_size,         # file size in bytes
+    "indexed": False,             # becomes True after successful indexing
+}
+```
+
+### Cache structure
+
+The cache file (`./know_index/file_cache.json`) includes configuration:
+
+```json
+{
+  "config": {
+    "chunk_size": 512,
+    "chunk_overlap": 50
+  },
+  "files": {
+    "/path/to/file.py": {
+      "mtime": 1709481600.0,
+      "size": 4096,
+      "indexed": true
+    }
+  }
+}
+```
+
+<Tip>
+The cache is automatically invalidated if chunk parameters change. When you run `know index` with different `--chunk-size` or `--overlap`, the cache returns an empty dict, forcing a full re-index.
+</Tip>
+
+### Cache validation
+
+During indexing, files are checked against the cache:
+
+```python src/db.py
+if (
+    cache_entry
+    and cache_entry.get("indexed")
+    and cache_entry.get("mtime") == stat.st_mtime
+    and cache_entry.get("size") == stat.st_size
+):
+    skipped_cache += 1
+    continue
+```
+
+If modification time or size differs, the file is re-indexed.
+
+## Batch processing
+
+For efficiency, chunks are indexed in batches:
+
+```python src/db.py
+batch_size = 100
+
+for i in range(0, len(pending_ids), batch_size):
+    batch_ids = pending_ids[i : i + batch_size]
+    batch_docs = pending_docs[i : i + batch_size]
+    batch_metas = pending_metas[i : i + batch_size]
+
+    dense_collection.upsert(
+        ids=batch_ids,
+        documents=batch_docs,
+        metadatas=batch_metas,
+    )
+```
+
+This reduces database round-trips and shows progress during large indexing operations.
+
+## Incremental updates
+
+The indexing system is designed for incremental updates:
+
+1. **File-level caching** - Skip unchanged files entirely
+2. **Chunk-level deduplication** - Avoid re-embedding identical content
+3. **Metadata tracking** - Monitor file modifications via mtime/size
+
+<Accordion title="Index report format">
+When you use `--report output.json`, you get detailed skip information:
+
+```json
+{
+  "added": 127,
+  "skipped": 43,
+  "skip_entries": [
+    {
+      "path": "/home/user/docs/README.md",
+      "chunk_index": 0,
+      "reason": "unchanged_file",
+      "collides_with": null
+    },
+    {
+      "path": "/home/user/code/utils.py",
+      "chunk_index": 2,
+      "reason": "duplicate_content",
+      "collides_with": "/home/user/code/helpers.py"
+    }
+  ]
+}
+```
+
+Reasons include:
+- `unchanged_file` - File cached with same mtime/size
+- `already_indexed` - Chunk hash exists in database
+- `duplicate_content` - Same content within current batch
+</Accordion>
+
+## Filtering options
+
+The indexing system supports fine-grained control over what gets indexed:
+
+### Extension filtering
+
+```bash
+know index --ext .md --ext .txt
+```
+
+### Glob patterns
+
+```bash
+know index --glob "docs/**/*.md" --glob "src/**/*.py"
+```
+
+### Time-based filtering
+
+```bash
+know index --since 7d        # Last 7 days
+know index --since 12h       # Last 12 hours
+know index --since 2024-01-15
+```
+
+<Info>
+Glob and time filters are applied during document loading, reducing the number of files processed by the chunker and embedder.
+</Info>

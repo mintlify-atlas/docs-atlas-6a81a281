@@ -1,0 +1,487 @@
+---
+title: Indexing strategies
+description: Optimize your knowledge base with targeted indexing using filters, globs, time-based queries, and extension controls
+---
+
+Know provides powerful filtering options to control what gets indexed. This guide covers strategies for efficient and targeted indexing.
+
+## Basic indexing
+
+Index all watched directories with default settings:
+
+```bash
+know index
+```
+
+**Default behavior:**
+- Recursive scanning enabled
+- Chunk size: 512 tokens
+- Chunk overlap: 50 tokens
+- All supported extensions included
+- Skips unchanged files (based on cache)
+
+## Supported file extensions
+
+By default, know indexes these file types:
+
+<Tabs>
+  <Tab title="Documents">
+    - `.md` - Markdown
+    - `.txt` - Plain text
+    - `.pdf` - PDF documents
+    - `.docx` - Word documents
+    - `.pptx` - PowerPoint presentations
+    - `.html` - HTML files
+  </Tab>
+  
+  <Tab title="Code">
+    - `.py` - Python
+    - `.js`, `.jsx` - JavaScript
+    - `.ts`, `.tsx` - TypeScript
+    - `.go` - Go
+    - `.rs` - Rust
+    - `.java` - Java
+    - `.c`, `.cpp`, `.h`, `.hpp` - C/C++
+    - `.rb` - Ruby
+    - `.sh` - Shell scripts
+    - `.lua` - Lua
+    - `.swift` - Swift
+  </Tab>
+</Tabs>
+
+## Extension filtering
+
+Index only specific file extensions using `--ext` or `-e`:
+
+```bash
+know index --ext .md
+know index --ext .py --ext .js
+know index -e md,py,js
+```
+
+<Note>
+You can specify extensions with or without the leading dot. Know normalizes them automatically.
+</Note>
+
+### Common patterns
+
+<CodeGroup>
+```bash Markdown only
+know index --ext .md
+```
+
+```bash Python code
+know index --ext .py
+```
+
+```bash Web files
+know index --ext .js --ext .ts --ext .jsx --ext .tsx --ext .html
+```
+
+```bash Documentation
+know index --ext .md --ext .txt --ext .pdf
+```
+</CodeGroup>
+
+## Glob pattern filtering
+
+Use glob patterns with `--glob` or `-g` to filter by path:
+
+```bash
+know index --glob "**/*.md"
+know index --glob "docs/**"
+know index -g "src/**/*.py" -g "tests/**/*.py"
+```
+
+### Glob pattern syntax
+
+<AccordionGroup>
+  <Accordion title="** - Match any directory depth">
+    ```bash
+    # Index all markdown files at any depth
+    know index --glob "**/*.md"
+    
+    # Index all files under docs/ at any depth
+    know index --glob "docs/**"
+    ```
+  </Accordion>
+  
+  <Accordion title="* - Match within a directory">
+    ```bash
+    # Index all Python files in src/ (not subdirectories)
+    know index --glob "src/*.py"
+    
+    # Index all files in notes/ with any extension
+    know index --glob "notes/*"
+    ```
+  </Accordion>
+  
+  <Accordion title="Multiple patterns">
+    ```bash
+    # Include multiple patterns
+    know index --glob "docs/**/*.md" --glob "README.md"
+    
+    # Comma-separated also works
+    know index -g "docs/**,src/**/*.py"
+    ```
+  </Accordion>
+</AccordionGroup>
+
+### Practical glob examples
+
+<CodeGroup>
+```bash Documentation folders
+know index --glob "docs/**" --glob "wiki/**"
+```
+
+```bash Specific directories
+know index --glob "src/**/*.py" --glob "lib/**/*.py"
+```
+
+```bash Exclude tests
+# Index Python files but not in tests/
+know index --glob "src/**/*.py" --glob "app/**/*.py"
+```
+
+```bash Specific files
+know index --glob "README.md" --glob "CHANGELOG.md"
+```
+</CodeGroup>
+
+<Warning>
+Glob patterns are relative to each watched directory. The pattern `docs/**/*.md` will match `docs/` in each watched directory, not a global path.
+</Warning>
+
+## Time-based indexing
+
+Index only recently modified files using `--since`:
+
+```bash
+know index --since 7d
+know index --since 12h
+know index --since 2024-01-15
+```
+
+### Time format options
+
+<Tabs>
+  <Tab title="Relative time">
+    Use suffixes for relative time periods:
+    
+    - `m` - minutes
+    - `h` - hours  
+    - `d` - days
+    - `w` - weeks
+    
+    ```bash
+    know index --since 30m  # Last 30 minutes
+    know index --since 12h  # Last 12 hours
+    know index --since 7d   # Last 7 days
+    know index --since 2w   # Last 2 weeks
+    ```
+  </Tab>
+  
+  <Tab title="Absolute date">
+    Use ISO date format:
+    
+    ```bash
+    know index --since 2024-01-15
+    ```
+    
+    Or with time:
+    
+    ```bash
+    know index --since 2024-01-15T10:30:00
+    ```
+  </Tab>
+</Tabs>
+
+### Use cases for --since
+
+<CardGroup cols={2}>
+  <Card title="Daily updates" icon="calendar-day">
+    ```bash
+    know index --since 1d
+    ```
+    Update index with today's changes
+  </Card>
+  
+  <Card title="After editing session" icon="clock">
+    ```bash
+    know index --since 2h
+    ```
+    Index files modified during work session
+  </Card>
+  
+  <Card title="Project milestone" icon="flag">
+    ```bash
+    know index --since 2024-03-01
+    ```
+    Index changes since a specific date
+  </Card>
+  
+  <Card title="Quick refresh" icon="bolt">
+    ```bash
+    know index --since 30m
+    ```
+    Fast update of very recent changes
+  </Card>
+</CardGroup>
+
+## Chunking configuration
+
+Control how documents are split into searchable chunks:
+
+```bash
+know index --chunk-size 512 --overlap 50
+know index -c 1024 -o 100
+```
+
+**Default values:**
+- Chunk size: `512` tokens
+- Overlap: `50` tokens
+
+### Choosing chunk size
+
+<Tabs>
+  <Tab title="Small (256-512)">
+    **Best for:** Code, short notes, precise results
+    
+    ```bash
+    know index --chunk-size 256 --overlap 25
+    ```
+    
+    - More granular search results
+    - Better for finding specific snippets
+    - More chunks = larger index
+  </Tab>
+  
+  <Tab title="Medium (512-1024)">
+    **Best for:** General documentation, balanced performance
+    
+    ```bash
+    know index --chunk-size 768 --overlap 75
+    ```
+    
+    - Default range, works well for most content
+    - Good balance of context and precision
+  </Tab>
+  
+  <Tab title="Large (1024+)">
+    **Best for:** Long-form content, books, research papers
+    
+    ```bash
+    know index --chunk-size 1024 --overlap 100
+    ```
+    
+    - More context per result
+    - Fewer chunks = faster indexing
+    - May miss specific details
+  </Tab>
+</Tabs>
+
+<Warning>
+Changing chunk size or overlap requires re-indexing with `--force`. The cache tracks these settings and invalidates if they change.
+</Warning>
+
+## Recursive vs non-recursive
+
+Control subdirectory scanning:
+
+```bash
+know index --recursive      # Default: scan subdirectories
+know index --no-recursive   # Only top-level files
+know index -r               # Short flag for recursive
+know index -R               # Short flag for non-recursive
+```
+
+**Default:** Recursive is enabled (`--recursive` / `-r`)
+
+## Combining filters
+
+Filters can be combined for precise control:
+
+<CodeGroup>
+```bash Recent Python changes
+know index --since 7d --ext .py
+```
+
+```bash Documentation updates
+know index --since 1d --glob "docs/**/*.md"
+```
+
+```bash Specific project area
+know index --glob "src/api/**" --ext .py --ext .js
+```
+
+```bash Recent code in specific folders
+know index --since 12h --glob "src/**" --glob "lib/**"
+```
+</CodeGroup>
+
+## Force re-indexing
+
+Clear the entire index and re-index from scratch:
+
+```bash
+know index --force
+know index -f
+```
+
+<Warning>
+The `--force` flag deletes ALL chunks, the cache, and BM25 index before re-indexing. Use with caution.
+</Warning>
+
+**When to use --force:**
+- Changed chunk size or overlap settings
+- Index corruption suspected
+- Want a completely fresh start
+- Changed which directories are watched
+
+## Dry run mode
+
+Preview what would be indexed without making changes:
+
+```bash
+know index --dry
+```
+
+Output shows:
+```
+Dry run: Scanning 3 directories
+Dry run: Would index 245 new, 1,523 unchanged
+```
+
+<Tip>
+Use dry run to test your filters before actually indexing:
+
+```bash
+know index --dry --since 7d --glob "docs/**"
+```
+</Tip>
+
+## Detailed logging
+
+Enable verbose output during indexing:
+
+```bash
+know index --log
+know index -l
+```
+
+Shows:
+- Extensions being indexed
+- Glob patterns applied
+- Time filters
+- Chunk configuration
+- Per-directory progress
+
+```
+Indexing 2 directories
+Extensions: ['.md', '.py', '.js']
+Globs: ['docs/**/*.md']
+Since: 7d
+Chunk size: 512, overlap: 50
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+/Users/username/projects/my-repo
+Scanning /Users/username/projects/my-repo for ['.md', '.py', '.js']
+Loaded 45 documents
+Created 156 chunks
+Skipping 120 unchanged/existing/duplicate, adding 36 new
+```
+
+## Skip reports
+
+Generate a JSON report of skipped files:
+
+```bash
+know index --report skip_report.json
+```
+
+The report includes:
+- Files skipped (unchanged, already indexed, duplicate content)
+- Reason for each skip
+- Collision information for duplicates
+
+<Accordion title="Example skip report">
+```json
+{
+  "added": 36,
+  "skipped": 120,
+  "skip_entries": [
+    {
+      "path": "/Users/username/notes/README.md",
+      "chunk_index": 0,
+      "reason": "unchanged_file",
+      "collides_with": null
+    },
+    {
+      "path": "/Users/username/docs/guide.md",
+      "chunk_index": 2,
+      "reason": "duplicate_content",
+      "collides_with": "/Users/username/docs/guide-copy.md"
+    }
+  ]
+}
+```
+
+**Skip reasons:**
+- `unchanged_file` - File hasn't been modified since last index
+- `already_indexed` - Chunk already exists in index
+- `duplicate_content` - Identical content in another file
+</Accordion>
+
+## Optimization strategies
+
+<Steps>
+  <Step title="Use incremental indexing">
+    After initial full index, use `--since` for updates:
+    
+    ```bash
+    # Initial index
+    know index
+    
+    # Daily updates
+    know index --since 1d
+    ```
+  </Step>
+  
+  <Step title="Filter by directory">
+    Use globs to index specific areas:
+    
+    ```bash
+    know index --glob "docs/**" --glob "src/api/**"
+    ```
+  </Step>
+  
+  <Step title="Adjust chunk size for content type">
+    Smaller chunks for code, larger for documentation:
+    
+    ```bash
+    # For code
+    know index --chunk-size 256 --glob "**/*.py"
+    
+    # For docs  
+    know index --chunk-size 1024 --glob "**/*.md"
+    ```
+  </Step>
+  
+  <Step title="Use dry run first">
+    Test filters before indexing:
+    
+    ```bash
+    know index --dry --since 7d --ext .md
+    ```
+  </Step>
+</Steps>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Search options" icon="magnifying-glass" href="/guides/search-options">
+    Learn how to search your indexed content effectively
+  </Card>
+  <Card title="Maintenance" icon="wrench" href="/guides/maintenance">
+    Keep your index optimized with pruning and cleanup
+  </Card>
+</CardGroup>

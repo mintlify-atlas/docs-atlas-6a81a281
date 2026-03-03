@@ -1,0 +1,197 @@
+---
+title: Managing directories
+description: Learn how to add, remove, and list watched directories in know
+---
+
+Know maintains a watch list of directories to index. This guide covers directory management operations.
+
+## Understanding the watch list
+
+Know stores your watched directories in `~/.know_dirs`, a plain text file with one directory path per line. All paths are stored as absolute paths after resolution.
+
+<Tip>
+The `~/.know_dirs` file is automatically created when you add your first directory. You can also edit it manually if needed.
+</Tip>
+
+## Adding directories
+
+Add a directory to the watch list using the `add` command:
+
+```bash
+know add /path/to/directory
+```
+
+<Steps>
+  <Step title="Specify the directory">
+    Provide either an absolute or relative path. Know will resolve it to an absolute path.
+    
+    ```bash
+    know add ~/projects/my-repo
+    know add ./docs
+    know add /Users/username/notes
+    ```
+  </Step>
+  
+  <Step title="Directory validation">
+    Know validates that the path exists and is a directory. If invalid, you'll see an error:
+    
+    ```
+    Error: '/invalid/path' is not a valid directory
+    ```
+  </Step>
+  
+  <Step title="Duplicate detection">
+    If the directory is already in your watch list, know will notify you:
+    
+    ```
+    Already added: /Users/username/projects/my-repo
+    ```
+  </Step>
+  
+  <Step title="Success confirmation">
+    On success, know confirms the addition:
+    
+    ```
+    Added /Users/username/projects/my-repo
+    ```
+  </Step>
+</Steps>
+
+### Multiple directories
+
+Add multiple directories by running the command multiple times:
+
+```bash
+know add ~/projects/repo-1
+know add ~/projects/repo-2
+know add ~/notes
+```
+
+<Warning>
+Adding a directory does NOT automatically index it. You must run `know index` after adding directories.
+</Warning>
+
+## Removing directories
+
+Remove a directory from the watch list:
+
+```bash
+know remove /path/to/directory
+```
+
+The path must match exactly as stored (absolute path). If successful:
+
+```
+Removed /Users/username/projects/my-repo
+```
+
+If the directory isn't in the watch list:
+
+```
+Not in watchlist: /Users/username/projects/my-repo
+```
+
+<Note>
+Removing a directory from the watch list does NOT remove its chunks from the index. Use `know prune` to clean up orphaned chunks after removing directories.
+</Note>
+
+## Listing watched directories
+
+View all directories in your watch list:
+
+```bash
+know dirs
+```
+
+This displays a formatted table:
+
+```
+┏━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ # ┃ Path                                   ┃
+┡━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
+│ 1 │ /Users/username/projects/my-repo       │
+│ 2 │ /Users/username/notes                  │
+│ 3 │ /Users/username/documents/work         │
+└───┴────────────────────────────────────────┘
+```
+
+If no directories are added:
+
+```
+No directories added
+```
+
+## Typical workflow
+
+<Steps>
+  <Step title="Add your directories">
+    ```bash
+    know add ~/projects/my-app
+    know add ~/notes
+    ```
+  </Step>
+  
+  <Step title="Verify the watch list">
+    ```bash
+    know dirs
+    ```
+  </Step>
+  
+  <Step title="Index the directories">
+    ```bash
+    know index
+    ```
+  </Step>
+  
+  <Step title="Search your content">
+    ```bash
+    know search "your query"
+    ```
+  </Step>
+</Steps>
+
+## Manual editing
+
+You can manually edit `~/.know_dirs`:
+
+```bash
+cat ~/.know_dirs
+/Users/username/projects/repo-1
+/Users/username/projects/repo-2
+/Users/username/notes
+```
+
+<Tabs>
+  <Tab title="Adding paths manually">
+    Add one absolute path per line:
+    
+    ```
+    /Users/username/projects/repo-1
+    /Users/username/projects/repo-2
+    /Users/username/notes
+    ```
+  </Tab>
+  
+  <Tab title="Removing paths manually">
+    Delete the line containing the path you want to remove.
+  </Tab>
+  
+  <Tab title="Reordering">
+    The order doesn't affect indexing behavior, but it determines the order shown in `know dirs`.
+  </Tab>
+</Tabs>
+
+<Warning>
+When manually editing, always use absolute paths. Relative paths may cause unexpected behavior.
+</Warning>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Indexing strategies" icon="filter" href="/guides/indexing-strategies">
+    Learn how to optimize indexing with filters and globs
+  </Card>
+  <Card title="Maintenance" icon="broom" href="/guides/maintenance">
+    Keep your index clean with pruning and cache management
+  </Card>
+</CardGroup>

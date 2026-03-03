@@ -1,0 +1,262 @@
+---
+title: know search
+description: Search indexed documents using semantic or lexical search
+---
+
+## Usage
+
+```bash
+know search <query> [OPTIONS]
+# or use the shortcut:
+know <query> [OPTIONS]
+```
+
+Search indexed documents using semantic vector search (default), BM25 lexical search, or hybrid search.
+
+## Shortcut behavior
+
+If you run `know` with an argument that is not a known command (add, remove, index, search, dirs, prune, reset), it automatically maps to `know search`:
+
+```bash
+# These are equivalent:
+know "python error handling"
+know search "python error handling"
+```
+
+## Parameters
+
+<ParamField path="query" type="str" required>
+  Search query string. Use natural language for semantic search.
+</ParamField>
+
+## Options
+
+<ParamField path="--limit" type="int" default="5">
+  Number of results to return.
+  
+  **Aliases:** `-n`
+</ParamField>
+
+<ParamField path="--glob" type="list[str]" default="null">
+  Include only files matching glob patterns. Can be specified multiple times or comma-separated. Examples: `**/*.md`, `notes/**`.
+  
+  **Aliases:** `-g`
+</ParamField>
+
+<ParamField path="--since" type="str" default="null">
+  Only include files modified since the specified time. Accepts relative time (e.g., `7d`, `12h`, `30m`) or absolute dates (e.g., `2024-01-15`, `2024-01-15T10:30:00`).
+</ParamField>
+
+<ParamField path="--bm25" type="boolean" default="false">
+  Use BM25 lexical search instead of semantic vector search. Good for exact keyword matching.
+</ParamField>
+
+<ParamField path="--hybrid" type="boolean" default="false">
+  Use hybrid BM25 + vector search. Combines lexical and semantic search for best results.
+</ParamField>
+
+<ParamField path="--benchmark" type="boolean" default="false">
+  Show dense vs BM25 results side-by-side for comparison.
+</ParamField>
+
+<ParamField path="--plain" type="boolean" default="false">
+  Render results as plain text instead of rich formatted output.
+</ParamField>
+
+<ParamField path="--json-out" type="Path" default="null">
+  Write JSON results to the specified file.
+</ParamField>
+
+<ParamField path="--json" type="boolean" default="false">
+  Render results as JSON to stdout.
+</ParamField>
+
+## Search modes
+
+- **Dense (default)**: Semantic vector search using embeddings. Best for natural language queries.
+- **BM25**: Lexical keyword search. Best for exact term matching.
+- **Hybrid**: Combines both dense and BM25 search. Best for comprehensive results.
+
+## Behavior
+
+- If no index exists, an error is shown with instructions to create one
+- Only one search mode can be selected at a time (dense, BM25, or hybrid)
+- Only one output format can be selected at a time (rich, plain, or JSON)
+- Results are ranked by relevance score
+
+## Examples
+
+### Basic search
+
+```bash
+know "error handling in python"
+```
+
+```
+┌───────────────────────────────────────────────────────────────────┐
+│ Search Results (5)                                                │
+├───────────────────────────────────────────────────────────────────┤
+│ 1. utils.py:45 (score: 0.89)                                     │
+│    Exception handling utilities for Python applications...        │
+│                                                                   │
+│ 2. main.py:120 (score: 0.85)                                     │
+│    Error handling in the main application loop...                │
+└───────────────────────────────────────────────────────────────────┘
+```
+
+### Search with explicit command
+
+```bash
+know search "error handling in python"
+```
+
+### Search with more results
+
+```bash
+know "machine learning" --limit 10
+# or
+know "machine learning" -n 10
+```
+
+### Search only markdown files
+
+```bash
+know "project ideas" --glob "**/*.md"
+```
+
+### Search multiple file patterns
+
+```bash
+know "config" --glob "**/*.yaml" --glob "**/*.toml"
+# or
+know "config" -g "**/*.yaml,**/*.toml"
+```
+
+### Search files modified in the last week
+
+```bash
+know "TODO" --since 7d
+```
+
+### Search files modified since a specific date
+
+```bash
+know "bug fix" --since 2024-01-15
+```
+
+### Use BM25 lexical search
+
+```bash
+know "error" --bm25
+```
+
+### Use hybrid search
+
+```bash
+know "authentication flow" --hybrid
+```
+
+### Compare search modes
+
+```bash
+know "database query" --benchmark
+```
+
+```
+┌─────────────────────── Dense Results ───────────────────────┐
+│ 1. db.py:89 (score: 0.91)                                   │
+│    Database query optimization...                           │
+└─────────────────────────────────────────────────────────────┘
+┌─────────────────────── BM25 Results ────────────────────────┐
+│ 1. queries.py:12 (score: 4.23)                             │
+│    Query builder for database operations...                │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Plain text output
+
+```bash
+know "test cases" --plain
+```
+
+```
+test_utils.py:34 (score: 0.88)
+Unit test cases for utility functions...
+
+test_main.py:67 (score: 0.82)
+Integration test cases for main application...
+```
+
+### JSON output to stdout
+
+```bash
+know "api" --json
+```
+
+```json
+[
+  {
+    "file": "api.py",
+    "line": 45,
+    "score": 0.92,
+    "content": "API endpoint definitions..."
+  }
+]
+```
+
+### Save results to JSON file
+
+```bash
+know "deployment" --json-out results.json
+```
+
+### Complex query with multiple filters
+
+```bash
+know "async function" --glob "**/*.py" --since 3d --limit 10 --hybrid
+```
+
+## Error handling
+
+### No index found
+
+```bash
+know "test"
+```
+
+```
+No index found.
+To get started, run:
+  know add <dir>
+  know index
+```
+
+### Invalid --since format
+
+```bash
+know "test" --since invalid
+```
+
+```
+Error: --since must be like 7d, 12h, 30m, or 2024-01-15
+```
+
+### Conflicting search modes
+
+```bash
+know "test" --bm25 --hybrid
+```
+
+```
+Error: Choose only one of --bm25 or --hybrid
+```
+
+### Conflicting output formats
+
+```bash
+know "test" --plain --json
+```
+
+```
+Error: Choose only one of --plain or --json
+```

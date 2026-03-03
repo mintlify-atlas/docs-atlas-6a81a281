@@ -1,0 +1,420 @@
+---
+title: Output formats
+description: Control search result display with rich tables, plain text, JSON output, and file export options
+---
+
+The know CLI supports three output formats for search results: rich terminal tables, plain text, and JSON. You can also export results to a file for further processing.
+
+## Rich table output (default)
+
+The default output uses Rich library formatting to display results in an interactive table with syntax highlighting.
+
+### Example output
+
+```bash
+know search "error handling"
+```
+
+This produces a formatted table rendered by `_render_rich()` (src/output.py:84-126):
+
+```python
+def _render_rich(result: ResultSet) -> None:
+    if not result.items:
+        console.print("[yellow]No results found[/]")
+        return
+
+    table = Table(
+        title=result.title,
+        box=box.SIMPLE_HEAVY,
+        show_lines=True,
+        pad_edge=False,
+    )
+    table.add_column("#", style="dim", width=3, justify="right")
+    table.add_column(result.score_label, style="cyan", width=9, justify="right")
+    table.add_column("File", style="green", overflow="fold")
+    table.add_column("Path", style="dim", overflow="fold", max_width=40)
+    table.add_column("Snippet", style="white", overflow="fold", max_width=60)
+```
+
+### Table features
+
+- **Rank column** - Sequential numbering of results
+- **Score column** - Distance (dense), Score (BM25), or RRF (hybrid)
+- **File column** - Filename with green highlighting
+- **Path column** - Shortened path with home directory replacement
+- **Snippet column** - First 200 characters of the chunk content
+
+### Top match panel
+
+Below the table, the top result is expanded in a panel (src/output.py:112-126):
+
+```python
+top_doc = result.items[0].doc
+top_meta = result.items[0].meta
+meta_line = Text(
+    f"{_display_path(top_meta['path'], 100)}  ·  "
+    f"chunk {top_meta.get('chunk_index', 0)}  ·  "
+    f"{top_meta.get('size_bytes', 0)} bytes",
+    style="dim",
+)
+console.print(
+    Panel(
+        Group(meta_line, Text(_preview_text(top_doc, 800))),
+        title=f"[bold]Top match:[/] {top_meta['filename']}",
+        border_style="green",
+    )
+)
+```
+
+The panel shows:
+- Full file path (up to 100 chars)
+- Chunk index within the file
+- Original file size in bytes
+- Extended snippet (up to 800 characters)
+
+### Path display optimization
+
+Paths are shortened using middle truncation (src/output.py:29-36):
+
+```python
+def _display_path(path: str, max_len: int = 60) -> str:
+    p = Path(path)
+    home = Path.home()
+    if p.is_absolute() and home in p.parents:
+        display = f"~/{p.relative_to(home)}"
+    else:
+        display = str(p)
+    return _shorten_middle(display, max_len)
+```
+
+Example: `/home/user/projects/my-app/src/components/Button.tsx` becomes `~/projects/my-app/.../Button.tsx`
+
+## Plain text output
+
+Use `--plain` for simple, parseable text output without colors or formatting.
+
+### Usage
+
+```bash
+know search "authentication" --plain
+```
+
+### Output format
+
+The plain renderer (src/output.py:65-81) produces:
+
+```
+Results for: authentication
+1. Distance=0.4523 | auth.py | /home/user/project/src/auth.py
+    This module handles user authentication and session management...
+2. Distance=0.5012 | login.py | /home/user/project/src/login.py
+    Login endpoint with JWT token generation...
+...
+Top match: auth.py | /home/user/project/src/auth.py | chunk 0 | 4892 bytes
+This module handles user authentication and session management. It provides
+functions for validating credentials, creating sessions, and managing tokens...
+```
+
+Implementation:
+
+```python
+def _render_plain(result: ResultSet) -> None:
+    if not result.items:
+        print("No results found")
+        return
+    print(result.title)
+    for i, item in enumerate(result.items, 1):
+        print(
+            f"{i}. {result.score_label}={item.distance:.4f} | "
+            f"{item.meta.get('filename')} | {item.meta.get('path')}"
+        )
+        print(f"    {_preview_text(item.doc, 200)}")
+    top = result.items[0]
+    print(
+        f"Top match: {top.meta.get('filename')} | {top.meta.get('path')} | "
+        f"chunk {top.meta.get('chunk_index', 0)} | {top.meta.get('size_bytes', 0)} bytes"
+    )
+    print(_preview_text(top.doc, 800))
+```
+
+<Note>
+Plain text output uses standard `print()` instead of Rich console, making it suitable for piping to other tools or logging.
+</Note>
+
+## JSON output
+
+Generate machine-readable JSON for programmatic consumption.
+
+### Standard output
+
+Use `--json` to print JSON to stdout:
+
+```bash
+know search "database query" --json
+```
+
+Output structure (src/output.py:39-56):
+
+```json
+{
+  "query": "database query",
+  "mode": "dense",
+  "title": "Results for: database query",
+  "results": [
+    {
+      "rank": 0,
+      "score": "0.4234",
+      "filename": "db.py",
+      "path": "/home/user/project/src/db.py",
+      "snippet": "Database query builder with support for complex joins...",
+      "chunk_index": 0,
+      "size_bytes": 5432
+    }
+  ]
+}
+```
+
+Implementation:
+
+```python
+def _result_set_json(result: ResultSet) -> dict:
+    return {
+        "query": result.query,
+        "mode": result.mode,
+        "title": result.title,
+        "results": [
+            {
+                "rank": i,
+                "score": f"{item.distance:.4f}" if item.distance is not None else "n/a",
+                "filename": item.meta.get("filename"),
+                "path": item.meta.get("path"),
+                "snippet": _preview_text(item.doc, 200),
+                "chunk_index": item.meta.get("chunk_index", 0),
+                "size_bytes": item.meta.get("size_bytes", 0),
+            }
+            for i, item in enumerate(result.items, 1)
+        ],
+    }
+```
+
+### Field descriptions
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `query` | string | The search query text |
+| `mode` | string | Search mode: `dense`, `bm25`, or `hybrid` |
+| `title` | string | Human-readable result title |
+| `results` | array | List of search results |
+| `rank` | integer | Result position (1-indexed) |
+| `score` | string | Relevance score formatted to 4 decimals |
+| `filename` | string | Base filename |
+| `path` | string | Absolute file path |
+| `snippet` | string | First 200 characters of content |
+| `chunk_index` | integer | Chunk position within the source file |
+| `size_bytes` | integer | Original file size in bytes |
+
+## JSON file export
+
+Export results to a file using `--json-out`:
+
+```bash
+know search "API endpoint" --json-out results.json
+```
+
+The file is written by `_write_json_file()` (src/output.py:59-62):
+
+```python
+def _write_json_file(payload: dict, json_out: Path | None) -> None:
+    if json_out is None:
+        return
+    json_out.write_text(json.dumps(payload, ensure_ascii=True))
+```
+
+### Combined with other formats
+
+You can export JSON while displaying rich or plain output:
+
+```bash
+# Rich terminal output + JSON export
+know search "query" --json-out results.json
+
+# Plain text output + JSON export
+know search "query" --plain --json-out results.json
+```
+
+<Warning>
+Using `--json` and `--plain` together will result in an error. Choose only one stdout format.
+</Warning>
+
+## Benchmark output
+
+When using `--benchmark`, both dense and BM25 results are shown/exported.
+
+### Terminal display
+
+```bash
+know search "error handling" --benchmark
+```
+
+This renders two tables - one for dense vector search and one for BM25 lexical search.
+
+### JSON structure
+
+Benchmark JSON has a different structure (src/output.py:135-139):
+
+```json
+{
+  "query": "error handling",
+  "dense": [
+    {"rank": 0, "score": "0.4123", ...}
+  ],
+  "bm25": [
+    {"rank": 0, "score": "12.3456", ...}
+  ]
+}
+```
+
+Implementation (src/output.py:135-149):
+
+```python
+if isinstance(response, BenchmarkResult):
+    payload = {
+        "query": response.query,
+        "dense": _result_set_json(response.dense)["results"],
+        "bm25": _result_set_json(response.bm25)["results"],
+    }
+    _write_json_file(payload, json_out)
+    if output == "json":
+        print(json.dumps(payload, ensure_ascii=True))
+        return
+    _render_rich(response.dense) if output == "rich" else _render_plain(
+        response.dense
+    )
+    _render_rich(response.bm25) if output == "rich" else _render_plain(
+        response.bm25
+    )
+```
+
+## Text preview functions
+
+All output formats use helper functions for text truncation:
+
+### Preview with ellipsis
+
+```python
+def _preview_text(text: str, limit_chars: int) -> str:
+    cleaned = text.replace("\n", " ")
+    return cleaned[:limit_chars] + ("..." if len(cleaned) > limit_chars else "")
+```
+
+- Replaces newlines with spaces
+- Truncates to specified character limit
+- Adds ellipsis if truncated
+
+### Middle shortening
+
+```python
+def _shorten_middle(text: str, max_len: int) -> str:
+    if len(text) <= max_len:
+        return text
+    keep = max_len - 3
+    head = keep // 2
+    tail = keep - head
+    return f"{text[:head]}...{text[-tail:]}"
+```
+
+Used for file paths to preserve both the beginning and end:
+- `/very/long/path/to/file.py` → `/very/lon...ile.py`
+
+## Output rendering workflow
+
+The main rendering function (src/output.py:129-160) routes to the appropriate formatter:
+
+```python
+def render_response(
+    response: ResultSet | BenchmarkResult,
+    output: str,
+    json_out: Path | None,
+) -> None:
+    if isinstance(response, BenchmarkResult):
+        # Handle benchmark results
+        payload = {...}
+        _write_json_file(payload, json_out)
+        if output == "json":
+            print(json.dumps(payload, ensure_ascii=True))
+            return
+        # Render both dense and bm25
+        _render_rich(response.dense) if output == "rich" else _render_plain(
+            response.dense
+        )
+        _render_rich(response.bm25) if output == "rich" else _render_plain(
+            response.bm25
+        )
+        return
+
+    # Handle single result set
+    payload = _result_set_json(response)
+    _write_json_file(payload, json_out)
+    if output == "json":
+        print(json.dumps(payload, ensure_ascii=True))
+        return
+    if output == "plain":
+        _render_plain(response)
+        return
+    _render_rich(response)
+```
+
+## Examples
+
+### Parse JSON with jq
+
+```bash
+# Extract only file paths
+know search "config" --json | jq -r '.results[].path'
+
+# Get top 3 results with scores
+know search "auth" --json | jq '.results[:3] | .[] | "\(.score) - \(.filename)"'
+
+# Count results per directory
+know search "test" --json | jq -r '.results[].path' | xargs dirname | sort | uniq -c
+```
+
+### Save and analyze results
+
+```bash
+# Export multiple searches
+know search "error" --json-out errors.json
+know search "warning" --json-out warnings.json
+
+# Compare dense vs BM25
+know search "algorithm" --benchmark --json-out comparison.json
+```
+
+### Script integration
+
+```python
+import subprocess
+import json
+
+# Run search and parse JSON
+result = subprocess.run(
+    ["know", "search", "TODO", "--json"],
+    capture_output=True,
+    text=True
+)
+data = json.loads(result.stdout)
+
+# Process results
+for item in data["results"]:
+    print(f"Found TODO in {item['path']} at chunk {item['chunk_index']}")
+```
+
+### Plain text for logging
+
+```bash
+# Append search results to a log file
+know search "deployment" --plain >> search_log.txt
+
+# Send via email
+know search "critical" --plain | mail -s "Search Results" admin@example.com
+```

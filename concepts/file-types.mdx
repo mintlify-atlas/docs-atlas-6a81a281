@@ -1,0 +1,405 @@
+---
+title: File types
+description: Supported file extensions and how different file types are processed
+---
+
+The `know` CLI supports 24 file extensions out of the box, covering common documentation formats and programming languages. All files are processed through the same chunking pipeline, with format-specific parsing handled by llama-index readers.
+
+## Supported extensions
+
+The system recognizes two categories of files:
+
+### Documentation formats
+
+```python src/db.py
+# documents
+".md",    # Markdown
+".txt",   # Plain text
+".pdf",   # Adobe PDF
+".docx",  # Microsoft Word
+".pptx",  # Microsoft PowerPoint
+".html",  # HTML documents
+```
+
+These formats are optimized for prose content: documentation, notes, reports, and presentations.
+
+### Code files
+
+```python src/db.py
+# code
+".py",    # Python
+".js",    # JavaScript
+".ts",    # TypeScript
+".jsx",   # React JSX
+".tsx",   # React TypeScript
+".go",    # Go
+".rs",    # Rust
+".java",  # Java
+".c",     # C
+".cpp",   # C++
+".h",     # C/C++ header
+".hpp",   # C++ header
+".rb",    # Ruby
+".sh",    # Shell scripts
+".lua",   # Lua
+".swift", # Swift
+```
+
+Code files are indexed with their syntax intact, making function definitions, class names, and comments searchable.
+
+<Info>
+The full list is defined in `SUPPORTED_EXTENSIONS` in `src/db.py:29-54`.
+</Info>
+
+## Custom extension filtering
+
+Override the defaults to index only specific file types:
+
+```bash
+# Index only Markdown and Python files
+know index --ext .md --ext .py
+
+# Index only documentation (no code)
+know index --ext .md --ext .txt --ext .pdf
+
+# Shorthand without dots works too
+know index --ext md --ext txt
+```
+
+Multiple extensions can be combined:
+
+```bash
+know index --ext .ts --ext .tsx --ext .js --ext .jsx
+```
+
+<Tip>
+Extension filtering happens during file loading, *before* chunking or embedding. This makes it very efficient for large directories.
+</Tip>
+
+## File loading pipeline
+
+The loading process uses llama-index's `SimpleDirectoryReader`:
+
+```python src/db.py
+reader = SimpleDirectoryReader(
+    input_dir=directory,
+    recursive=recursive,
+    required_exts=ext_filter,
+    filename_as_id=True,
+)
+
+documents = reader.load_data()
+```
+
+### Parameters explained
+
+- **input_dir** - Root directory to scan
+- **recursive** - Whether to scan subdirectories (default: `True`)
+- **required_exts** - List of extensions to include
+- **filename_as_id** - Use file path as document ID for deduplication
+
+## Format-specific processing
+
+Each file type is parsed differently:
+
+### Plain text files (.txt, .md, code files)
+
+Read directly as UTF-8 text. Markdown formatting and code syntax are preserved:
+
+```markdown
+# Original markdown
+This is **bold** and this is `code`.
+```
+
+Indexed as:
+```
+# Original markdown
+This is **bold** and this is `code`.
+```
+
+<Note>
+Markdown syntax is included in embeddings. This means searching for "code block" might match documentation that discusses code blocks, even if the word "code" isn't in the prose.
+</Note>
+
+### PDF files (.pdf)
+
+Extracted as plain text using llama-index's PDF reader. Layout information (columns, headers) may not be preserved:
+
+- Text is extracted page by page
+- Images and charts are not indexed
+- Formatting (bold, italic) is lost
+- Tables may appear as unstructured text
+
+<Warning>
+PDF extraction quality depends on the PDF structure. Scanned documents (images) without OCR won't have extractable text.
+</Warning>
+
+### Microsoft Office files (.docx, .pptx)
+
+Parsed using llama-index readers:
+
+- **DOCX**: Paragraphs, headings, and lists extracted as plain text
+- **PPTX**: Slide text content extracted (excluding speaker notes by default)
+
+Formatting and styling are stripped during extraction.
+
+### HTML files (.html)
+
+HTML tags are typically preserved. This means:
+
+```html
+<div class="documentation">
+  <h1>Getting Started</h1>
+  <p>Welcome to the docs.</p>
+</div>
+```
+
+Is indexed including tags. Search for "h1" or "div" to find HTML structure, or search for "Getting Started" to find content.
+
+## Metadata tracking
+
+Every chunk includes rich metadata:
+
+```python src/db.py
+meta = {
+    "path": source_path,                # Full file path
+    "filename": file_path.name,         # Just the filename
+    "extension": file_path.suffix,      # File extension (.py, .md, etc.)
+    "size_bytes": stat.st_size,         # File size in bytes
+    "chunk_index": chunk_index,         # Position within file (0, 1, 2, ...)
+    "node_id": node.node_id,            # Unique chunk identifier
+}
+```
+
+This metadata enables:
+- **Extension filtering** during search: `--glob "**/*.py"`
+- **File path display** in search results
+- **Chunk ordering** when viewing results from the same file
+
+## File content augmentation
+
+Before embedding, each chunk is augmented with its filename:
+
+```python src/db.py
+file_path = Path(source_path)
+doc_text = f"{file_path.name}\n\n{node.text}"
+```
+
+**Example:**
+
+Original chunk from `database.py`:
+```python
+def connect_to_db():
+    return psycopg2.connect(DATABASE_URL)
+```
+
+Augmented for embedding:
+```
+database.py
+
+def connect_to_db():
+    return psycopg2.connect(DATABASE_URL)
+```
+
+<Info>
+Filename augmentation improves search relevance. Searching for "database connection" will boost results from files named `database.py`, `db_connection.go`, etc.
+</Info>
+
+## Glob pattern filtering
+
+Combine extension and glob filters for precise control:
+
+```bash
+# Only Python files in src/ directory
+know index --ext .py --glob "src/**"
+
+# Only documentation, exclude tests
+know index --ext .md --glob "docs/**" --glob "!**/*test*"
+
+# Multiple patterns
+know index --glob "src/**/*.ts" --glob "lib/**/*.ts"
+```
+
+### How glob filtering works
+
+Globs are applied after file loading but before chunking:
+
+```python src/db.py
+if include_globs:
+    filtered = []
+    for doc in documents:
+        source_path = doc.metadata["file_path"]
+        source_resolved = Path(source_path).resolve()
+        rel_str = source_resolved.relative_to(base_resolved).as_posix()
+        if any(
+            fnmatch.fnmatch(rel_str, pattern) for pattern in include_globs
+        ):
+            filtered.append(doc)
+    documents = filtered
+```
+
+The system:
+1. Resolves file paths to absolute paths
+2. Converts to relative paths from the indexed directory
+3. Matches against glob patterns using `fnmatch`
+4. Filters out non-matching documents
+
+<Accordion title="Glob pattern examples">
+
+| Pattern | Matches |
+|---------|----------|
+| `**/*.md` | All Markdown files in any directory |
+| `docs/**` | All files under `docs/` |
+| `src/**/*.py` | Python files under `src/` |
+| `*.txt` | Text files in root directory only |
+| `**/*test*.py` | Python files with "test" in the name |
+
+</Accordion>
+
+## File size considerations
+
+All files are loaded into memory before chunking:
+
+```python src/db.py
+stat = file_path.stat()
+meta = {
+    # ...
+    "size_bytes": stat.st_size,
+}
+```
+
+Very large files (100MB+) may:
+- Take longer to load and chunk
+- Generate hundreds of chunks
+- Consume significant memory during indexing
+
+<Tip>
+Use `--glob` patterns to exclude large binary files, build artifacts, or generated files:
+```bash
+know index --glob "!**/node_modules/**" --glob "!**/*.min.js"
+```
+Note: Binary files with unsupported extensions are already excluded by default.
+</Tip>
+
+## Incremental updates by file type
+
+The file cache tracks each file individually:
+
+```json
+{
+  "files": {
+    "/path/to/README.md": {
+      "mtime": 1709481600.0,
+      "size": 4096,
+      "indexed": true
+    },
+    "/path/to/main.py": {
+      "mtime": 1709485200.0,
+      "size": 8192,
+      "indexed": true
+    }
+  }
+}
+```
+
+When you edit `main.py` and re-run `know index`:
+- `README.md` is skipped (unchanged)
+- `main.py` is re-chunked and re-indexed
+
+This works regardless of file type - the cache tracks modification time and size, not file content.
+
+## Recursive vs non-recursive scanning
+
+By default, indexing is recursive:
+
+```bash
+know index  # Scans all subdirectories
+```
+
+Disable recursion to index only the top level:
+
+```bash
+know index --no-recursive
+```
+
+This is useful when:
+- You only want files in a specific directory
+- Subdirectories contain unrelated content
+- You want to manually control which subdirectories are indexed
+
+## Adding new file types
+
+To support additional extensions, edit `SUPPORTED_EXTENSIONS` in `src/db.py`:
+
+```python
+SUPPORTED_EXTENSIONS = [
+    # documents
+    ".md", ".txt", ".pdf", ".docx", ".pptx", ".html",
+    # code
+    ".py", ".js", ".ts", # ...
+    # Add your extensions
+    ".yml", ".yaml", ".json", ".toml",
+]
+```
+
+<Warning>
+llama-index must support the file format. Plain text files (`.yml`, `.json`, `.xml`) work automatically. Binary formats may require additional reader dependencies.
+</Warning>
+
+## Time-based filtering
+
+Filter files by modification time across all file types:
+
+```bash
+# Last 7 days
+know index --since 7d
+
+# Last 12 hours
+know index --since 12h
+
+# Since specific date
+know index --since 2024-01-15
+```
+
+Implementation:
+
+```python src/db.py
+if since_timestamp is not None:
+    filtered = []
+    for doc in documents:
+        source_path = doc.metadata["file_path"]
+        mtime = Path(source_path).stat().st_mtime
+        if mtime >= since_timestamp:
+            filtered.append(doc)
+    documents = filtered
+```
+
+<Info>
+Time filtering uses file modification time (`mtime`), not creation time. Moving or copying a file updates `mtime`.
+</Info>
+
+## Search-time filtering
+
+Extension metadata enables filtering during search:
+
+```bash
+# Search only Python files
+know search --glob "**/*.py" "error handling"
+
+# Search only documentation
+know search --glob "**/*.md" --glob "**/*.txt" "installation guide"
+```
+
+The filter applies to chunk metadata:
+
+```python src/db.py
+if include_globs:
+    path_str = Path(source_path).as_posix()
+    if not any(
+        fnmatch.fnmatch(path_str, pattern)
+        for pattern in include_globs
+    ):
+        continue
+```
+
+Chunks from non-matching files are excluded from results, even if their embeddings match the query.
