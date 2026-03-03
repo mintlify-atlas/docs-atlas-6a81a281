@@ -1,0 +1,89 @@
+{
+  "projectType": "cli-tool",
+  "projectName": "know",
+  "projectDescription": "A semantic search CLI for indexing and querying local files using vector embeddings and BM25.",
+  "theme": "aspen",
+  "primaryColor": "#10b981",
+  "lightColor": "#34d399",
+  "darkColor": "#059669",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "installation",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/indexing",
+              "concepts/search-modes",
+              "concepts/file-types"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/managing-directories",
+              "guides/indexing-strategies",
+              "guides/search-options",
+              "guides/maintenance"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "CLI Reference",
+        "groups": [
+          {
+            "group": "Commands",
+            "pages": [
+              "commands/add",
+              "commands/remove",
+              "commands/index",
+              "commands/search",
+              "commands/dirs",
+              "commands/prune",
+              "commands/reset"
+            ]
+          },
+          {
+            "group": "Advanced",
+            "pages": [
+              "advanced/filtering",
+              "advanced/output-formats",
+              "advanced/performance"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Semantic vector search with ChromaDB embeddings",
+    "BM25 lexical search with caching",
+    "Hybrid search combining dense and sparse retrieval",
+    "Directory watching and incremental indexing",
+    "Support for 20+ file types including documents and code",
+    "Smart chunking with overlap",
+    "Rich CLI output with rankings and previews",
+    "Glob-based filtering and time-based queries",
+    "Benchmark mode for comparing search methods"
+  ],
+  "publicApiSurface": [
+    "know add <dir>",
+    "know remove <dir>",
+    "know index [options]",
+    "know search <query> [options]",
+    "know <query> [options]",
+    "know dirs",
+    "know prune [options]",
+    "know reset"
+  ]
+}
